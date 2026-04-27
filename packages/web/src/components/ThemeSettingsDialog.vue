@@ -175,9 +175,6 @@ onBeforeUnmount(() => {
                   Active
                 </span>
               </span>
-              <span class="theme-card-copy">
-                {{ item.theme.base16.base05 }} on {{ item.theme.base16.base00 }}
-              </span>
             </button>
           </div>
         </div>
@@ -324,7 +321,7 @@ onBeforeUnmount(() => {
 
 .theme-card {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding: 12px;
   text-align: left;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
@@ -394,10 +391,6 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
-.theme-card-copy {
-  color: var(--text-subtle);
-  font-size: 0.72rem;
-}
 
 @media (max-width: 900px) {
   .theme-dialog-overlay {
