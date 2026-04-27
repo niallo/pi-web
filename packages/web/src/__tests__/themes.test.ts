@@ -56,10 +56,15 @@ describe("theme registry", () => {
   });
 
   it("lists multiple built-in themes for both modes", () => {
-    expect(listThemes("dark").length).toBeGreaterThan(1);
-    expect(listThemes("light").length).toBeGreaterThan(1);
-    expect(listThemes("dark").every(theme => theme.mode === "dark")).toBe(true);
-    expect(listThemes("light").every(theme => theme.mode === "light")).toBe(true);
+    const darkThemes = listThemes("dark");
+    const lightThemes = listThemes("light");
+
+    expect(darkThemes.length).toBeGreaterThan(1);
+    expect(lightThemes.length).toBeGreaterThan(1);
+    expect(darkThemes.every(theme => theme.mode === "dark")).toBe(true);
+    expect(lightThemes.every(theme => theme.mode === "light")).toBe(true);
+    expect(darkThemes.some(theme => theme.id === "catppuccin-mocha")).toBe(true);
+    expect(lightThemes.some(theme => theme.id === "catppuccin-latte")).toBe(true);
   });
 
   it("updates the selected mode and assigned theme ids", () => {
@@ -86,20 +91,20 @@ describe("theme registry", () => {
   it("derives app and shiki themes from the active Base46 theme", () => {
     const theme = resolveActiveTheme({
       mode: "dark",
-      darkThemeId: "tokyo-night",
+      darkThemeId: "catppuccin-mocha",
       lightThemeId: "pi-base46-light",
     });
 
     expect(resolveAppThemeVars(theme)).toMatchObject({
-      "--bg": "#1a1b26",
-      "--accent": "#7aa2f7",
-      "--text": "#c0caf5",
+      "--bg": "#1e1e2e",
+      "--accent": "#89b4fa",
+      "--text": "#cdd6f4",
     });
     expect(resolveShikiTheme(theme)).toMatchObject({
-      name: "tokyo-night",
+      name: "catppuccin-mocha",
       type: "dark",
-      bg: "#1a1b26",
-      fg: "#c0caf5",
+      bg: "#1e1e2e",
+      fg: "#cdd6f4",
     });
   });
 });
