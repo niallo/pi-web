@@ -83,7 +83,11 @@ function codeBlockPlaceholder(
   return `<div class="markdown-code-block" data-code-index="${index}" aria-live="polite"><pre><code${className}>${escapeHtml(source)}</code></pre></div>`;
 }
 
-function fileReferenceLink(label: string, path: string, lineNumber: number): string {
+function fileReferenceLink(
+  label: string,
+  path: string,
+  lineNumber: number,
+): string {
   return `<a class="markdown-file-ref" href="#" data-file-path="${escapeHtml(path)}" data-file-line="${lineNumber}" title="Open ${escapeHtml(path)} at line ${lineNumber}"><code>${escapeHtml(label)}</code></a>`;
 }
 
@@ -501,12 +505,16 @@ function ensureThemeObserver() {
     const rerenderMermaid = records.some(
       record => record.attributeName === "data-theme-mode",
     );
-    const rerenderCode = records.some(record =>
-      record.attributeName === "data-dark-theme" ||
-      record.attributeName === "data-light-theme"
+    const rerenderCode = records.some(
+      record =>
+        record.attributeName === "data-dark-theme" ||
+        record.attributeName === "data-light-theme",
     );
 
-    if ((rerenderMermaid || rerenderCode) && current.mermaidSources.length > 0) {
+    if (
+      (rerenderMermaid || rerenderCode) &&
+      current.mermaidSources.length > 0
+    ) {
       void renderMermaidBlocks();
     }
     if (rerenderCode && current.codeBlocks.length > 0) {

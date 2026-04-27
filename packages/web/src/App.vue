@@ -385,7 +385,10 @@ watch(
   themePreference,
   value => {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(THEME_CACHE_KEY, serializeThemePreference(value));
+      window.localStorage.setItem(
+        THEME_CACHE_KEY,
+        serializeThemePreference(value),
+      );
     }
   },
   { deep: true },
@@ -1214,7 +1217,6 @@ onBeforeUnmount(() => {
   min-height: 0;
   overflow: hidden;
 }
-
 
 .app-body {
   display: grid;

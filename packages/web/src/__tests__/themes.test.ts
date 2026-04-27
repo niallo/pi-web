@@ -63,8 +63,12 @@ describe("theme registry", () => {
     expect(lightThemes.length).toBeGreaterThan(1);
     expect(darkThemes.every(theme => theme.mode === "dark")).toBe(true);
     expect(lightThemes.every(theme => theme.mode === "light")).toBe(true);
-    expect(darkThemes.some(theme => theme.id === "catppuccin-mocha")).toBe(true);
-    expect(lightThemes.some(theme => theme.id === "catppuccin-latte")).toBe(true);
+    expect(darkThemes.some(theme => theme.id === "catppuccin-mocha")).toBe(
+      true,
+    );
+    expect(lightThemes.some(theme => theme.id === "catppuccin-latte")).toBe(
+      true,
+    );
   });
 
   it("updates the selected mode and assigned theme ids", () => {
@@ -79,13 +83,15 @@ describe("theme registry", () => {
       darkThemeId: "pi-base46-dark",
       lightThemeId: "pi-base46-light",
     });
-    expect(setThemePreferenceTheme(preference, "dark", "tokyo-night")).toMatchObject({
+    expect(
+      setThemePreferenceTheme(preference, "dark", "tokyo-night"),
+    ).toMatchObject({
       darkThemeId: "tokyo-night",
       lightThemeId: "pi-base46-light",
     });
-    expect(
-      setThemePreferenceTheme(preference, "light", "tokyo-night"),
-    ).toEqual(preference);
+    expect(setThemePreferenceTheme(preference, "light", "tokyo-night")).toEqual(
+      preference,
+    );
   });
 
   it("derives app and shiki themes from the active Base46 theme", () => {

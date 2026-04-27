@@ -8,7 +8,12 @@ import type {
   ThemePreference,
 } from "./types";
 
-export type { Base46Theme, ThemeMode, ThemePair, ThemePreference } from "./types";
+export type {
+  Base46Theme,
+  ThemeMode,
+  ThemePair,
+  ThemePreference,
+} from "./types";
 
 export const BUILT_IN_THEMES = [
   ...DARK_THEMES,
@@ -34,9 +39,13 @@ const DEFAULT_THEME_PREFERENCE: ThemePreference = {
 function parseHexColor(value: string): [number, number, number] | null {
   const normalized = value.trim().replace(/^#/, "");
   if (/^[0-9a-f]{3}$/i.test(normalized)) {
-    return normalized.split("").map(channel =>
-      Number.parseInt(channel + channel, 16),
-    ) as [number, number, number];
+    return normalized
+      .split("")
+      .map(channel => Number.parseInt(channel + channel, 16)) as [
+      number,
+      number,
+      number,
+    ];
   }
   if (/^[0-9a-f]{6}$/i.test(normalized)) {
     return [0, 2, 4].map(index =>
@@ -55,7 +64,9 @@ function toRgba(value: string, alpha: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
-function themeById(themeId: string | null | undefined): Base46Theme | undefined {
+function themeById(
+  themeId: string | null | undefined,
+): Base46Theme | undefined {
   return themeId ? THEMES_BY_ID.get(themeId) : undefined;
 }
 
@@ -86,15 +97,18 @@ export function readStoredThemePreference(
 
   try {
     const parsed = JSON.parse(raw) as Partial<ThemePreference>;
-    const mode = parsed.mode === "light" || parsed.mode === "dark"
-      ? parsed.mode
-      : fallback.mode;
-    const darkThemeId = themeById(parsed.darkThemeId)?.mode === "dark"
-      ? parsed.darkThemeId
-      : DEFAULT_THEME_PREFERENCE.darkThemeId;
-    const lightThemeId = themeById(parsed.lightThemeId)?.mode === "light"
-      ? parsed.lightThemeId
-      : DEFAULT_THEME_PREFERENCE.lightThemeId;
+    const mode =
+      parsed.mode === "light" || parsed.mode === "dark"
+        ? parsed.mode
+        : fallback.mode;
+    const darkThemeId =
+      themeById(parsed.darkThemeId)?.mode === "dark"
+        ? parsed.darkThemeId
+        : DEFAULT_THEME_PREFERENCE.darkThemeId;
+    const lightThemeId =
+      themeById(parsed.lightThemeId)?.mode === "light"
+        ? parsed.lightThemeId
+        : DEFAULT_THEME_PREFERENCE.lightThemeId;
 
     return {
       mode,
@@ -198,10 +212,7 @@ export function resolveAppThemeVars(
       mode === "dark" ? 0.4 : 0.2,
     ),
     "--focus-ring": toRgba(base16.base0D, mode === "dark" ? 0.35 : 0.28),
-    "--focus-ring-muted": toRgba(
-      base30.grey_fg,
-      mode === "dark" ? 0.22 : 0.18,
-    ),
+    "--focus-ring-muted": toRgba(base30.grey_fg, mode === "dark" ? 0.22 : 0.18),
     "--selection-bg": toRgba(base16.base0D, mode === "dark" ? 0.22 : 0.16),
     "--button-bg": base30.one_bg2,
     "--button-hover": base30.one_bg3,
@@ -374,5 +385,8 @@ export function readActiveThemeFromDom(): Base46Theme {
   const shell = document.querySelector<HTMLElement>(".app-shell");
   const mode = shell?.dataset.themeMode === "light" ? "light" : "dark";
   const pair = readThemePairFromDom();
-  return themeById(shell?.dataset.theme) ?? (mode === "dark" ? pair.dark : pair.light);
+  return (
+    themeById(shell?.dataset.theme) ??
+    (mode === "dark" ? pair.dark : pair.light)
+  );
 }

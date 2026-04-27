@@ -39,7 +39,9 @@ const displayThemes = computed(() => {
   const defaultTheme = currentThemes.value.find(
     theme => theme.id === defaultThemeId.value,
   );
-  const rest = currentThemes.value.filter(theme => theme.id !== defaultThemeId.value);
+  const rest = currentThemes.value.filter(
+    theme => theme.id !== defaultThemeId.value,
+  );
   return [
     ...(defaultTheme
       ? [{ theme: defaultTheme, label: "Default (Built-in)", isDefault: true }]
@@ -105,7 +107,8 @@ onBeforeUnmount(() => {
                 </h2>
               </div>
               <p class="theme-dialog-copy">
-                {{ currentModeCopy }} Use the header toggle to switch between dark and light modes.
+                {{ currentModeCopy }} Use the header toggle to switch between
+                dark and light modes.
               </p>
             </div>
             <button
@@ -130,7 +133,10 @@ onBeforeUnmount(() => {
               v-for="item in displayThemes"
               :key="item.theme.id"
               class="theme-card"
-              :class="{ current: currentThemeId === item.theme.id, default: item.isDefault }"
+              :class="{
+                current: currentThemeId === item.theme.id,
+                default: item.isDefault,
+              }"
               type="button"
               @click="emit('setTheme', item.theme.id)"
             >
@@ -162,7 +168,10 @@ onBeforeUnmount(() => {
               </div>
               <span class="theme-card-title-row">
                 <span class="theme-card-title">{{ item.label }}</span>
-                <span v-if="currentThemeId === item.theme.id" class="theme-card-badge">
+                <span
+                  v-if="currentThemeId === item.theme.id"
+                  class="theme-card-badge"
+                >
                   Active
                 </span>
               </span>
@@ -346,7 +355,6 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--surface-active) 68%, var(--panel));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
 }
-
 
 .theme-card-preview {
   display: grid;
