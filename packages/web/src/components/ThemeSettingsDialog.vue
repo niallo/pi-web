@@ -25,13 +25,28 @@ const currentThemeId = computed(() =>
   props.mode === "dark" ? props.darkThemeId : props.lightThemeId,
 );
 const currentModeLabel = computed(() =>
-  props.mode === "dark" ? "Dark mode themes" : "Light mode themes",
+  props.mode === "dark" ? "Dark theme" : "Light theme",
 );
 const currentModeCopy = computed(() =>
   props.mode === "dark"
-    ? "Choose the palette used while the app is in dark mode."
-    : "Choose the palette used while the app is in light mode.",
+    ? "Choose the palette used while the app stays in dark mode."
+    : "Choose the palette used while the app stays in light mode.",
 );
+const defaultThemeId = computed(() =>
+  props.mode === "dark" ? "pi-base46-dark" : "pi-base46-light",
+);
+const displayThemes = computed(() => {
+  const defaultTheme = currentThemes.value.find(
+    theme => theme.id === defaultThemeId.value,
+  );
+  const rest = currentThemes.value.filter(theme => theme.id !== defaultThemeId.value);
+  return [
+    ...(defaultTheme
+      ? [{ theme: defaultTheme, label: "Default (Built-in)", isDefault: true }]
+      : []),
+    ...rest.map(theme => ({ theme, label: theme.label, isDefault: false })),
+  ];
+});
 
 function handleKeydown(event: KeyboardEvent) {
   if (event.key === "Escape" && props.open) {
@@ -76,89 +91,86 @@ onBeforeUnmount(() => {
         aria-modal="true"
         aria-labelledby="theme-dialog-title"
       >
-        <header class="theme-dialog-header">
-          <div>
-            <div class="theme-dialog-kicker">Appearance</div>
-            <h2 id="theme-dialog-title" class="theme-dialog-title">
-              {{ currentModeLabel }}
-            </h2>
-            <p class="theme-dialog-copy">
-              {{ currentModeCopy }} Use the header toggle to switch between dark and light modes.
-            </p>
-          </div>
-          <button
-            class="theme-dialog-close"
-            type="button"
-            aria-label="Close theme settings"
-            @click="emit('close')"
-          >
-            <X aria-hidden="true" />
-          </button>
-        </header>
-
         <div class="theme-dialog-body">
-          <section class="theme-section">
-            <div class="theme-section-heading-row">
-              <component
-                :is="mode === 'dark' ? Moon : Sun"
-                class="theme-section-icon"
-                aria-hidden="true"
-              />
-              <div class="theme-section-heading-block">
-                <div class="theme-section-heading">{{ currentModeLabel }}</div>
-                <div class="theme-section-subtle">
-                  {{ currentThemes.length }} built-in themes available
-                </div>
+          <div class="theme-dialog-top">
+            <div class="theme-dialog-intro">
+              <div class="theme-title-row">
+                <component
+                  :is="mode === 'dark' ? Moon : Sun"
+                  class="theme-title-icon"
+                  aria-hidden="true"
+                />
+                <h2 id="theme-dialog-title" class="theme-dialog-title">
+                  {{ currentModeLabel }}
+                </h2>
               </div>
+              <p class="theme-dialog-copy">
+                {{ currentModeCopy }} Use the header toggle to switch between dark and light modes.
+              </p>
             </div>
+            <button
+              class="theme-dialog-close"
+              type="button"
+              aria-label="Close theme settings"
+              @click="emit('close')"
+            >
+              <X aria-hidden="true" />
+            </button>
+          </div>
 
-            <div class="theme-grid">
-              <button
-                v-for="theme in currentThemes"
-                :key="theme.id"
-                class="theme-card"
-                :class="{ current: currentThemeId === theme.id }"
-                type="button"
-                @click="emit('setTheme', theme.id)"
-              >
-                <div class="theme-card-preview">
-                  <span
-                    class="theme-swatch background"
-                    :style="{ background: theme.base16.base00 }"
-                  ></span>
-                  <span
-                    class="theme-swatch panel"
-                    :style="{ background: theme.base30.one_bg2 }"
-                  ></span>
-                  <span
-                    class="theme-swatch accent"
-                    :style="{ background: theme.base16.base0D }"
-                  ></span>
-                  <span
-                    class="theme-swatch success"
-                    :style="{ background: theme.base16.base0B }"
-                  ></span>
-                  <span
-                    class="theme-swatch warning"
-                    :style="{ background: theme.base16.base0A }"
-                  ></span>
-                  <span
-                    class="theme-swatch neutral"
-                    :style="{ background: theme.base16.base05 }"
-                  ></span>
-                </div>
-                <span class="theme-card-title-row">
-                  <span class="theme-card-title">{{ theme.label }}</span>
-                  <span v-if="currentThemeId === theme.id" class="theme-card-badge">
-                    Active
-                  </span>
+          <div class="theme-section-meta">
+            <span class="theme-section-label">{{ currentModeLabel }}</span>
+            <span class="theme-section-subtle">
+              {{ displayThemes.length }} themes available
+            </span>
+          </div>
+
+          <div class="theme-grid">
+            <button
+              v-for="item in displayThemes"
+              :key="item.theme.id"
+              class="theme-card"
+              :class="{ current: currentThemeId === item.theme.id, default: item.isDefault }"
+              type="button"
+              @click="emit('setTheme', item.theme.id)"
+            >
+              <div class="theme-card-preview">
+                <span
+                  class="theme-swatch background"
+                  :style="{ background: item.theme.base16.base00 }"
+                ></span>
+                <span
+                  class="theme-swatch panel"
+                  :style="{ background: item.theme.base30.one_bg2 }"
+                ></span>
+                <span
+                  class="theme-swatch accent"
+                  :style="{ background: item.theme.base16.base0D }"
+                ></span>
+                <span
+                  class="theme-swatch success"
+                  :style="{ background: item.theme.base16.base0B }"
+                ></span>
+                <span
+                  class="theme-swatch warning"
+                  :style="{ background: item.theme.base16.base0A }"
+                ></span>
+                <span
+                  class="theme-swatch neutral"
+                  :style="{ background: item.theme.base16.base05 }"
+                ></span>
+              </div>
+              <span class="theme-card-title-row">
+                <span class="theme-card-title">{{ item.label }}</span>
+                <span v-if="currentThemeId === item.theme.id" class="theme-card-badge">
+                  Active
                 </span>
-                <span class="theme-card-copy">
-                  {{ theme.base16.base05 }} on {{ theme.base16.base00 }}
-                </span>
-              </button>
-            </div>
-          </section>
+              </span>
+              <span class="theme-card-copy">
+                {{ item.theme.base16.base05 }} on {{ item.theme.base16.base00 }}
+              </span>
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -173,16 +185,16 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 20px;
   background: var(--overlay);
 }
 
 .theme-dialog {
-  width: min(1380px, 100%);
-  max-height: min(88vh, 920px);
+  width: min(1120px, 100%);
+  max-height: min(82vh, 760px);
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
-  border-radius: 22px;
+  border-radius: 18px;
   background-color: var(--panel);
   background-image: linear-gradient(
     180deg,
@@ -192,44 +204,62 @@ onBeforeUnmount(() => {
   box-shadow: var(--shadow-floating);
 }
 
-.theme-dialog-header {
+.theme-dialog-body {
+  max-height: min(82vh, 760px);
+  overflow-y: auto;
+  padding: 18px 20px 20px;
+  background: var(--panel);
+}
+
+.theme-dialog-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 20px;
-  padding: 24px 26px 18px;
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-.theme-dialog-kicker {
-  margin-bottom: 8px;
+.theme-dialog-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.theme-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-title-icon {
+  width: 18px;
+  height: 18px;
   color: var(--accent-hover);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  flex-shrink: 0;
 }
 
 .theme-dialog-title {
   margin: 0;
   color: var(--text);
-  font-size: 1.18rem;
-  line-height: 1.1;
+  font-size: 1.02rem;
+  line-height: 1.15;
+  font-weight: 700;
 }
 
 .theme-dialog-copy {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--text-subtle);
-  font-size: 0.84rem;
+  font-size: 0.8rem;
   line-height: 1.5;
+  max-width: 640px;
 }
 
 .theme-dialog-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: color-mix(in srgb, var(--panel-2) 88%, var(--panel));
@@ -254,68 +284,42 @@ onBeforeUnmount(() => {
 }
 
 .theme-dialog-close svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
-.theme-dialog-body {
-  max-height: calc(min(88vh, 920px) - 102px);
-  overflow-y: auto;
-  padding: 22px 26px 26px;
-  background: var(--panel);
-}
-
-.theme-section {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.theme-section-heading-row {
+.theme-section-meta {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  margin-bottom: 14px;
 }
 
-.theme-section-icon {
-  width: 20px;
-  height: 20px;
-  color: var(--accent-hover);
-  flex-shrink: 0;
-}
-
-.theme-section-heading-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.theme-section-heading {
+.theme-section-label {
   color: var(--text);
-  font-size: 0.8rem;
+  font-size: 0.84rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .theme-section-subtle {
   color: var(--text-subtle);
-  font-size: 0.76rem;
+  font-size: 0.75rem;
 }
 
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
 }
 
 .theme-card {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   text-align: left;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-  border-radius: 18px;
+  border-radius: 16px;
   background: color-mix(in srgb, var(--panel) 92%, var(--panel-2) 8%);
   color: inherit;
   cursor: pointer;
@@ -343,16 +347,17 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
+
 .theme-card-preview {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
+  gap: 7px;
 }
 
 .theme-swatch {
   display: block;
-  height: 28px;
-  border-radius: 10px;
+  height: 24px;
+  border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -365,7 +370,7 @@ onBeforeUnmount(() => {
 
 .theme-card-title {
   color: var(--text);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 600;
 }
 
@@ -377,34 +382,34 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--accent-hover);
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 600;
 }
 
 .theme-card-copy {
   color: var(--text-subtle);
-  font-size: 0.76rem;
+  font-size: 0.72rem;
 }
 
 @media (max-width: 900px) {
   .theme-dialog-overlay {
-    padding: 12px;
+    padding: 10px;
     align-items: flex-end;
   }
 
   .theme-dialog {
     width: 100%;
-    max-height: 92vh;
-    border-radius: 20px 20px 0 0;
+    max-height: 88vh;
+    border-radius: 18px 18px 0 0;
   }
 
   .theme-dialog-body {
-    max-height: calc(92vh - 102px);
-    padding: 18px 18px 22px;
+    max-height: 88vh;
+    padding: 16px 16px 20px;
   }
 
-  .theme-dialog-header {
-    padding: 20px 18px 16px;
+  .theme-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
