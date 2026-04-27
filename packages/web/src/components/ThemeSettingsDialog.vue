@@ -1,0 +1,410 @@
+<script setup lang="ts">
+import { Moon, Sun, X } from "lucide-vue-next";
+import { computed, onBeforeUnmount, watch } from "vue";
+import type { Base46Theme, ThemeMode } from "../themes";
+
+const props = defineProps<{
+  open: boolean;
+  mode: ThemeMode;
+  darkThemeId: string;
+  lightThemeId: string;
+  darkThemes: Base46Theme[];
+  lightThemes: Base46Theme[];
+  themeStyle: Record<string, string>;
+}>();
+
+const emit = defineEmits<{
+  close: [];
+  setTheme: [themeId: string];
+}>();
+
+const currentThemes = computed(() =>
+  props.mode === "dark" ? props.darkThemes : props.lightThemes,
+);
+const currentThemeId = computed(() =>
+  props.mode === "dark" ? props.darkThemeId : props.lightThemeId,
+);
+const currentModeLabel = computed(() =>
+  props.mode === "dark" ? "Dark mode themes" : "Light mode themes",
+);
+const currentModeCopy = computed(() =>
+  props.mode === "dark"
+    ? "Choose the palette used while the app is in dark mode."
+    : "Choose the palette used while the app is in light mode.",
+);
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape" && props.open) {
+    emit("close");
+  }
+}
+
+watch(
+  () => props.open,
+  open => {
+    if (typeof document === "undefined") return;
+    document.body.style.overflow = open ? "hidden" : "";
+  },
+  { immediate: true },
+);
+
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", handleKeydown);
+}
+
+onBeforeUnmount(() => {
+  if (typeof document !== "undefined") {
+    document.body.style.overflow = "";
+  }
+  if (typeof window !== "undefined") {
+    window.removeEventListener("keydown", handleKeydown);
+  }
+});
+</script>
+
+<template>
+  <Teleport to="body">
+    <div
+      v-if="open"
+      class="theme-dialog-overlay"
+      :style="themeStyle"
+      @click.self="emit('close')"
+    >
+      <section
+        class="theme-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="theme-dialog-title"
+      >
+        <header class="theme-dialog-header">
+          <div>
+            <div class="theme-dialog-kicker">Appearance</div>
+            <h2 id="theme-dialog-title" class="theme-dialog-title">
+              {{ currentModeLabel }}
+            </h2>
+            <p class="theme-dialog-copy">
+              {{ currentModeCopy }} Use the header toggle to switch between dark and light modes.
+            </p>
+          </div>
+          <button
+            class="theme-dialog-close"
+            type="button"
+            aria-label="Close theme settings"
+            @click="emit('close')"
+          >
+            <X aria-hidden="true" />
+          </button>
+        </header>
+
+        <div class="theme-dialog-body">
+          <section class="theme-section">
+            <div class="theme-section-heading-row">
+              <component
+                :is="mode === 'dark' ? Moon : Sun"
+                class="theme-section-icon"
+                aria-hidden="true"
+              />
+              <div class="theme-section-heading-block">
+                <div class="theme-section-heading">{{ currentModeLabel }}</div>
+                <div class="theme-section-subtle">
+                  {{ currentThemes.length }} built-in themes available
+                </div>
+              </div>
+            </div>
+
+            <div class="theme-grid">
+              <button
+                v-for="theme in currentThemes"
+                :key="theme.id"
+                class="theme-card"
+                :class="{ current: currentThemeId === theme.id }"
+                type="button"
+                @click="emit('setTheme', theme.id)"
+              >
+                <div class="theme-card-preview">
+                  <span
+                    class="theme-swatch background"
+                    :style="{ background: theme.base16.base00 }"
+                  ></span>
+                  <span
+                    class="theme-swatch panel"
+                    :style="{ background: theme.base30.one_bg2 }"
+                  ></span>
+                  <span
+                    class="theme-swatch accent"
+                    :style="{ background: theme.base16.base0D }"
+                  ></span>
+                  <span
+                    class="theme-swatch success"
+                    :style="{ background: theme.base16.base0B }"
+                  ></span>
+                  <span
+                    class="theme-swatch warning"
+                    :style="{ background: theme.base16.base0A }"
+                  ></span>
+                  <span
+                    class="theme-swatch neutral"
+                    :style="{ background: theme.base16.base05 }"
+                  ></span>
+                </div>
+                <span class="theme-card-title-row">
+                  <span class="theme-card-title">{{ theme.label }}</span>
+                  <span v-if="currentThemeId === theme.id" class="theme-card-badge">
+                    Active
+                  </span>
+                </span>
+                <span class="theme-card-copy">
+                  {{ theme.base16.base05 }} on {{ theme.base16.base00 }}
+                </span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </div>
+  </Teleport>
+</template>
+
+<style scoped>
+.theme-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+
+.theme-dialog {
+  width: min(1380px, 100%);
+  max-height: min(88vh, 920px);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 86%, transparent);
+  border-radius: 22px;
+  background-color: var(--panel);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--panel-2) 94%, var(--panel) 6%),
+    var(--panel)
+  );
+  box-shadow: var(--shadow-floating);
+}
+
+.theme-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 26px 18px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+}
+
+.theme-dialog-kicker {
+  margin-bottom: 8px;
+  color: var(--accent-hover);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.theme-dialog-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.18rem;
+  line-height: 1.1;
+}
+
+.theme-dialog-copy {
+  margin: 8px 0 0;
+  color: var(--text-subtle);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.theme-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-2) 88%, var(--panel));
+  color: var(--text-subtle);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.theme-dialog-close:hover,
+.theme-dialog-close:focus-visible {
+  border-color: var(--accent);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.theme-dialog-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.theme-dialog-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.theme-dialog-body {
+  max-height: calc(min(88vh, 920px) - 102px);
+  overflow-y: auto;
+  padding: 22px 26px 26px;
+  background: var(--panel);
+}
+
+.theme-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.theme-section-heading-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-section-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--accent-hover);
+  flex-shrink: 0;
+}
+
+.theme-section-heading-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.theme-section-heading {
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.theme-section-subtle {
+  color: var(--text-subtle);
+  font-size: 0.76rem;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.theme-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 92%, var(--panel-2) 8%);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.theme-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border-strong));
+}
+
+.theme-card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.theme-card.current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface-active) 68%, var(--panel));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.theme-card-preview {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-swatch {
+  display: block;
+  height: 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.theme-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.theme-card-title {
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.theme-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent-hover);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.theme-card-copy {
+  color: var(--text-subtle);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 900px) {
+  .theme-dialog-overlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+
+  .theme-dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .theme-dialog-body {
+    max-height: calc(92vh - 102px);
+    padding: 18px 18px 22px;
+  }
+
+  .theme-dialog-header {
+    padding: 20px 18px 16px;
+  }
+}
+</style>

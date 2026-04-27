@@ -9,6 +9,7 @@ import {
 } from "vue";
 import ExtensionDialog from "./components/ExtensionDialog.vue";
 import ReconnectBanner from "./components/ReconnectBanner.vue";
+import ThemeSettingsDialog from "./components/ThemeSettingsDialog.vue";
 import { useBridgeClient } from "./composables/useBridgeClient";
 import AppHeader from "./layout/AppHeader.vue";
 import AppMainContent from "./layout/AppMainContent.vue";
@@ -17,10 +18,12 @@ import AppRightSidebar from "./layout/AppRightSidebar.vue";
 import AppSidebar from "./layout/AppSidebar.vue";
 import type { RpcImageContent, RpcThinkingLevel } from "./shared-types";
 import {
+  listThemes,
   readStoredThemePreference,
   resolveActiveTheme,
   resolveAppThemeVars,
   serializeThemePreference,
+  setThemePreferenceTheme,
   toggleThemePreferenceMode,
   type ThemeMode,
   type ThemePreference,
@@ -129,6 +132,7 @@ const TREE_TAB_ID = "tree";
 const sidebarOpen = ref(false);
 const leftSidebarCollapsed = ref(false);
 const outlineSidebarOpen = ref(false);
+const themeSettingsOpen = ref(false);
 const activeRightSidebarTabId = ref<RightSidebarTabId>(TREE_TAB_ID);
 const fileViewerTabs = ref<FileViewerTab[]>([]);
 const mainContentRef = ref<InstanceType<typeof AppMainContent> | null>(null);
@@ -199,6 +203,8 @@ function readCachedRailWidth(
 }
 
 const themePreference = ref<ThemePreference>(readCachedThemePreference());
+const darkThemes = listThemes("dark");
+const lightThemes = listThemes("light");
 const activeTheme = computed(() => resolveActiveTheme(themePreference.value));
 const appThemeStyle = computed(() => ({
   ...resolveAppThemeVars(activeTheme.value),
@@ -603,6 +609,22 @@ function toggleTheme() {
   themePreference.value = toggleThemePreferenceMode(themePreference.value);
 }
 
+function openThemeSettings() {
+  themeSettingsOpen.value = true;
+}
+
+function closeThemeSettings() {
+  themeSettingsOpen.value = false;
+}
+
+function handleThemePresetSelect(themeId: string) {
+  themePreference.value = setThemePreferenceTheme(
+    themePreference.value,
+    themePreference.value.mode,
+    themeId,
+  );
+}
+
 function toggleSessionSidebar() {
   const nextOpen = !sidebarOpen.value;
   sidebarOpen.value = nextOpen;
@@ -994,6 +1016,7 @@ onBeforeUnmount(() => {
         @toggle-sidebar-collapse="toggleLeftSidebarCollapse"
         @toggle-outline-sidebar="toggleOutlineSidebar"
         @toggle-theme="toggleTheme"
+        @open-theme-settings="openThemeSettings"
         @toggle-debug-mode="toggleDebugMode"
       />
 
@@ -1096,6 +1119,18 @@ onBeforeUnmount(() => {
       :connection-error="connectionError"
       :notifications="notifications"
       @dismiss="handleDismissNotification"
+    />
+
+    <ThemeSettingsDialog
+      :open="themeSettingsOpen"
+      :mode="themePreference.mode"
+      :dark-theme-id="themePreference.darkThemeId"
+      :light-theme-id="themePreference.lightThemeId"
+      :dark-themes="darkThemes"
+      :light-themes="lightThemes"
+      :theme-style="appThemeStyle"
+      @close="closeThemeSettings"
+      @set-theme="handleThemePresetSelect"
     />
 
     <ExtensionDialog
