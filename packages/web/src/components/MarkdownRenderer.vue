@@ -666,7 +666,7 @@ watch(
   font-size: 0.85em;
   padding: 0.15em 0.4em;
   border-radius: 4px;
-  background: var(--panel-2);
+  background: var(--panel);
   color: var(--text);
 }
 
@@ -676,7 +676,7 @@ watch(
 }
 
 .markdown-body a.markdown-file-ref code {
-  color: color-mix(in srgb, var(--accent-hover) 80%, var(--text));
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
   border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
   background: color-mix(in srgb, var(--surface-active) 64%, var(--panel-2));
   cursor: pointer;
