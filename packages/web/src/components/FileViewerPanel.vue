@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { RpcWorkspaceFile } from "../shared-types";
-import {
-  highlightCodeLinesHtml,
-  readThemeMode,
-} from "../utils/codeHighlight";
+import { highlightCodeLinesHtml } from "../utils/codeHighlight";
 
 const props = defineProps<{
   filePath: string;
@@ -83,7 +80,7 @@ async function renderCode() {
   const html = await highlightCodeLinesHtml(
     file.value.content,
     file.value.path,
-    readThemeMode(),
+    undefined,
     activeLineNumber.value,
   );
   if (version !== renderVersion) {
@@ -105,7 +102,7 @@ onMounted(() => {
   });
   themeObserver.observe(shell, {
     attributes: true,
-    attributeFilter: ["data-theme"],
+    attributeFilter: ["data-dark-theme", "data-light-theme"],
   });
 });
 
