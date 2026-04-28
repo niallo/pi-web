@@ -40,3 +40,5 @@ jobs:
         run: pi --version
       - name: Install pi-web from local package
         run: pi install .
+      - name: Smoke test /web through pi
+        run: pnpm run smoke:pi-web
