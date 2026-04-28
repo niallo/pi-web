@@ -4,6 +4,12 @@
   "private": true,
   "description": "WebSocket RPC bridge server for Pi Web",
   "type": "module",
+  "exports": {
+    "./*.ts": {
+      "types": "./*.ts",
+      "default": "./*.ts"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",

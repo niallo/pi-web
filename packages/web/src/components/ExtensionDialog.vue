@@ -4,7 +4,7 @@ import { ref, watch } from "vue";
 import type {
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
-} from "../shared-types";
+} from "@pi-web/bridge/types";
 
 const props = defineProps<{
   request: RpcExtensionUIRequest | null;

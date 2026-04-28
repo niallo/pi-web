@@ -9,7 +9,7 @@ import {
   watch,
 } from "vue";
 import type { TranscriptEntry } from "../composables/useBridgeClient";
-import type { RpcImageContent } from "../shared-types";
+import type { RpcImageContent } from "@pi-web/bridge/types";
 import { userMessageCopyText } from "../utils/messageCopy";
 import { buildToolInlineModel } from "../utils/toolBlock";
 import {

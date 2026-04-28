@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Check, ChevronDown } from "lucide-vue-next";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import type { RpcThinkingLevel } from "../shared-types";
+import type { RpcThinkingLevel } from "@pi-web/bridge/types";
 import {
   DEFAULT_THINKING_LEVEL,
   THINKING_LEVEL_OPTIONS,

@@ -8,7 +8,7 @@ import {
   RefreshCw,
 } from "lucide-vue-next";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import type { RpcGitBranch, RpcGitRepoState } from "../shared-types";
+import type { RpcGitBranch, RpcGitRepoState } from "@pi-web/bridge/types";
 
 const props = defineProps<{
   label: string | null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RpcTreeEntry } from "../shared-types";
+import type { RpcTreeEntry } from "@pi-web/bridge/types";
 import {
   filterTreeEntries,
   getTreeEntryDisplayParts,

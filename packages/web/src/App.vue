@@ -16,7 +16,7 @@ import AppMainContent from "./layout/AppMainContent.vue";
 import AppNotifications from "./layout/AppNotifications.vue";
 import AppRightSidebar from "./layout/AppRightSidebar.vue";
 import AppSidebar from "./layout/AppSidebar.vue";
-import type { RpcImageContent, RpcThinkingLevel } from "./shared-types";
+import type { RpcImageContent, RpcThinkingLevel } from "@pi-web/bridge/types";
 import {
   listThemes,
   readStoredThemePreference,

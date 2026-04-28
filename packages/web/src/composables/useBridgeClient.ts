@@ -27,7 +27,7 @@ import type {
   RpcTranscriptUpsertEvent,
   RpcSessionStatsEvent,
   ServerMessage,
-} from "../shared-types";
+} from "@pi-web/bridge/types";
 import {
   normalizeRpcModel,
   upsertModel,

@@ -7,7 +7,7 @@ import type {
   RpcSlashCommand,
   RpcThinkingLevel,
   RpcWorkspaceEntry,
-} from "../shared-types";
+} from "@pi-web/bridge/types";
 import {
   COMPOSER_ATTACHMENT_ACCEPT,
   createComposerAttachments,

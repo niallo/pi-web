@@ -17,7 +17,7 @@ import type {
   RpcSlashCommand,
   RpcThinkingLevel,
   RpcWorkspaceEntry,
-} from "../shared-types";
+} from "@pi-web/bridge/types";
 import type { RpcModelInfo } from "../utils/models";
 import type { PendingTranscriptSessionEvent } from "../utils/transcript";
 

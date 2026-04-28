@@ -4,7 +4,7 @@ import { computed } from "vue";
 import FileViewerPanel from "../components/FileViewerPanel.vue";
 import SessionTreeRail from "../components/SessionTreeRail.vue";
 import type { TreeEntry } from "../composables/useBridgeClient";
-import type { RpcWorkspaceFile } from "../shared-types";
+import type { RpcWorkspaceFile } from "@pi-web/bridge/types";
 
 type FileTab = {
   id: string;

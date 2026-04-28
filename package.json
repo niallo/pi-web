@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.65.0",
+    "@pi-web/bridge": "workspace:*",
     "@types/node": "^24.3.0",
     "@typescript/native-preview": "7.0.0-dev.20260413.1",
     "oxfmt": "^0.45.0",
