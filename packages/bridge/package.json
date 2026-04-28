@@ -4,17 +4,6 @@
   "private": true,
   "description": "WebSocket RPC bridge server for Pi Web",
   "type": "module",
-  "exports": {
-    ".": "./server.ts",
-    "./types": "./types.ts",
-    "./exit-input": "./exit-input.ts",
-    "./lifecycle": "./lifecycle.ts",
-    "./terminal-log-view": "./terminal-log-view.ts",
-    "./ws-rpc-adapter": "./ws-rpc-adapter.ts",
-    "./bridge-event-bus": "./bridge-event-bus.ts",
-    "./network": "./network.ts",
-    "./session-registry": "./session-registry.ts"
-  },
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run"
