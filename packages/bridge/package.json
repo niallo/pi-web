@@ -5,6 +5,7 @@
   "description": "WebSocket RPC bridge server for Pi Web",
   "type": "module",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
     "check": "tsc --noEmit",
     "test": "vitest run"
   },

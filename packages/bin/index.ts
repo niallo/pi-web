@@ -13,11 +13,11 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
 } from "@mariozechner/pi-coding-agent";
-import { isBridgeExitInput } from "../bridge/exit-input.js";
-import { startBridge, type BridgeController } from "../bridge/lifecycle.js";
-import { createBridgeTerminalView } from "../bridge/terminal-log-view.js";
-import { DEFAULT_BRIDGE_CONFIG, type BridgeConfig } from "../bridge/types.js";
-import type { WsRpcAdapterContext } from "../bridge/ws-rpc-adapter.js";
+import { isBridgeExitInput } from "@pi-web/bridge/exit-input";
+import { startBridge, type BridgeController } from "@pi-web/bridge/lifecycle";
+import { createBridgeTerminalView } from "@pi-web/bridge/terminal-log-view";
+import { DEFAULT_BRIDGE_CONFIG, type BridgeConfig } from "@pi-web/bridge/types";
+import type { WsRpcAdapterContext } from "@pi-web/bridge/ws-rpc-adapter";
 
 async function webBridgeHandler(
   _args: string,

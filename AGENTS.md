@@ -14,8 +14,9 @@ This is a pnpm workspace monorepo with the following packages:
 ## Commands
 
 - `pnpm run check` — type-check with `tsgo`
-- `pnpm run build` — build both server and web
-- `pnpm run build:server` — build server (bin + bridge) to `dist/`
+- `pnpm run build` — build everything (bridge → bin → web)
+- `pnpm run build:bridge` — build bridge package
+- `pnpm run build:bin` — build bin package (Vite library mode)
 - `pnpm run build:web` — build Vue client to `web-dist/`
 - `pnpm run dev:web` — Vite dev server for the web UI
 - `pnpm test` / `pnpm run test:watch` — run Vitest test suite
@@ -25,8 +26,9 @@ This is a pnpm workspace monorepo with the following packages:
 ## Architecture
 
 - `packages/bin/` — Pi extension entry point, registers `/web` command
-- `packages/bridge/` — HTTP server, WebSocket RPC bridge, auth, terminal log
-  view
+  - Bundled with Vite (library mode) → `dist/bin/index.js`
+- `packages/bridge/` — HTTP server, WebSocket RPC bridge, auth, terminal log view
+  - Compiled with tsc → `dist/bridge/`
 - `packages/web/` — Vue 3 client (Vite + vitest)
 
 ## Important Tips
@@ -40,5 +42,4 @@ This is a pnpm workspace monorepo with the following packages:
   instead
 - If you apply any edits on vue codes in `@packages/web/src`, run
   `pnpm run build:web`
-- Use relative imports between packages (e.g., `../bridge/types.js`), not
-  workspace aliases
+- Use `@pi-web/bridge` imports, not relative paths between packages

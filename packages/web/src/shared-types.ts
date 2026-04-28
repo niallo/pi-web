@@ -56,4 +56,4 @@ export type {
   RpcWorkspaceEntry,
   RpcWorkspaceFile,
   ServerMessage,
-} from "../../bridge/types";
+} from "@pi-web/bridge/types";
