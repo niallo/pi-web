@@ -1,13 +1,39 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
 const READY_TIMEOUT_MS = 30000;
 const EXIT_TIMEOUT_MS = 10000;
 const POLL_MS = 200;
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(scriptDir, "..");
+
+function resolvePiCommand() {
+  const localCli = join(
+    projectRoot,
+    "node_modules",
+    "@mariozechner",
+    "pi-coding-agent",
+    "dist",
+    "cli.js",
+  );
+
+  if (existsSync(localCli)) {
+    return {
+      command: process.execPath,
+      args: [localCli],
+    };
+  }
+
+  return {
+    command: process.platform === "win32" ? "pi.cmd" : "pi",
+    args: [],
+  };
+}
 
 async function waitForReadyFile(readyFile, exitPromise) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
@@ -78,7 +104,9 @@ async function main() {
   let stderr = "";
 
   try {
-    child = spawn("pi", ["--no-session", "-p", "/web --headless"], {
+    const piCommand = resolvePiCommand();
+
+    child = spawn(piCommand.command, [...piCommand.args, "--no-session", "-p", "/web --headless"], {
       env: {
         ...process.env,
         PI_WEB_HEADLESS: "1",
