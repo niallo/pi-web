@@ -3,10 +3,20 @@
 This file provides guidance to coding agents when working with code in this
 repository.
 
+## Monorepo Structure
+
+This is a pnpm workspace monorepo with the following packages:
+
+- `@pi-web/bridge` (`packages/bridge/`) — WebSocket RPC bridge server
+- `@pi-web/bin` (`packages/bin/`) — Pi extension entry point
+- `@pi-web/web` (`packages/web/`) — Vue 3 web client
+
 ## Commands
 
 - `pnpm run check` — type-check with `tsgo`
-- `pnpm run build:web` — build the Vue browser bundle to `web-dist/`
+- `pnpm run build` — build both server and web
+- `pnpm run build:server` — build server (bin + bridge) to `dist/`
+- `pnpm run build:web` — build Vue client to `web-dist/`
 - `pnpm run dev:web` — Vite dev server for the web UI
 - `pnpm test` / `pnpm run test:watch` — run Vitest test suite
 - `pnpm fmt` / `pnpm run fmt:check` — format/check with `oxfmt`
@@ -19,14 +29,16 @@ repository.
   view
 - `packages/web/` — Vue 3 client (Vite + vitest)
 
-## important tips
+## Important Tips
 
 - You should read the source code of @mariozechner/pi-coding-agent,
-  @mariozechner/pi-ai carefuilly, especially the wire protocol of pi
+  @mariozechner/pi-ai carefully, especially the wire protocol of pi
 - Do not add thin wrapper functions around existing functions unless the wrapper
   adds real value beyond renaming.
 - Use git conventional commits specification when commit
-- Do not use `nl -ba $file | rg -n $pattern`, use `car $file | rg -n $pattern`
+- Do not use `nl -ba $file | rg -n $pattern`, use `cat $file | rg -n $pattern`
   instead
-- If you apply any edits on vue codes in @packages/web/src, run
+- If you apply any edits on vue codes in `@packages/web/src`, run
   `pnpm run build:web`
+- Use relative imports between packages (e.g., `../bridge/types.js`), not
+  workspace aliases
