@@ -16,11 +16,7 @@ export default defineConfig({
       fileName: "index",
     },
     rollupOptions: {
-      external: [
-        /^@mariozechner\//,
-        /^node:/,
-        "ws",
-      ],
+      external: [/^@mariozechner\//, /^node:/, "ws"],
     },
     target: "node20",
     ssr: true,

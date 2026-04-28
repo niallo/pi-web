@@ -5,7 +5,7 @@
   "description": "WebSocket RPC bridge server for Pi Web",
   "type": "module",
   "exports": {
-    "./*.ts": {
+    "./*": {
       "types": "./*.ts",
       "default": "./*.ts"
     }

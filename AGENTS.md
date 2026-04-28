@@ -27,7 +27,8 @@ This is a pnpm workspace monorepo with the following packages:
 
 - `packages/bin/` — Pi extension entry point, registers `/web` command
   - Bundled with Vite (library mode) → `dist/bin/index.js`
-- `packages/bridge/` — HTTP server, WebSocket RPC bridge, auth, terminal log view
+- `packages/bridge/` — HTTP server, WebSocket RPC bridge, auth, terminal log
+  view
   - Compiled with tsc → `dist/bridge/`
 - `packages/web/` — Vue 3 client (Vite + vitest)
 

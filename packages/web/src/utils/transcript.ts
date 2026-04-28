@@ -619,18 +619,25 @@ function cloneToolResultContent(
 ): RpcTranscriptToolResultBlock["content"] | undefined {
   if (!Array.isArray(content)) return undefined;
 
-  return content.flatMap(item => {
-    if (typeof item === "string") return [item];
+  const cloned: NonNullable<RpcTranscriptToolResultBlock["content"]> = [];
+  for (const item of content) {
+    if (typeof item === "string") {
+      cloned.push(item);
+      continue;
+    }
 
     switch (item.type) {
       case "text":
       case "image":
       case "image_url":
-        return [{ ...item }];
+        cloned.push({ ...item });
+        break;
       default:
-        return [];
+        break;
     }
-  });
+  }
+
+  return cloned;
 }
 
 function configSystemBlock(

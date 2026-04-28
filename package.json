@@ -22,11 +22,11 @@
     "access": "public"
   },
   "scripts": {
-    "build:bridge": "pnpm -C packages/bridge build",
+    "build": "pnpm run build:server && pnpm run build:web",
     "build:bin": "pnpm -C packages/bin build",
+    "build:bridge": "pnpm -C packages/bridge build",
     "build:server": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && pnpm run build:bridge && pnpm run build:bin",
     "build:web": "pnpm -C packages/web build",
-    "build": "pnpm run build:server && pnpm run build:web",
     "check": "tsgo --noEmit",
     "dev:pi": "PI_BRIDGE_PORT=${PI_BRIDGE_PORT:-8080} pi -e ./packages/bin/index.ts",
     "dev:pi:inspect": "PI_BRIDGE_PORT=${PI_BRIDGE_PORT:-8080} NODE_OPTIONS='--inspect-brk' pi -e ./packages/bin/index.ts",
@@ -38,6 +38,9 @@
     "prepack": "pnpm run build",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.65.0",

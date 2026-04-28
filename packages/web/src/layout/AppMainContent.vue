@@ -1,13 +1,4 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import ChatTranscript from "../components/ChatTranscript.vue";
-import CompatWarning from "../components/CompatWarning.vue";
-import ComposerBar from "../components/ComposerBar.vue";
-import SessionStatsBar from "../components/SessionStatsBar.vue";
-import type {
-  ConnectionStatus,
-  TranscriptEntry,
-} from "../composables/useBridgeClient";
 import type {
   RpcGitRepoState,
   RpcImageContent,
@@ -18,6 +9,15 @@ import type {
   RpcThinkingLevel,
   RpcWorkspaceEntry,
 } from "@pi-web/bridge/types";
+import { ref } from "vue";
+import ChatTranscript from "../components/ChatTranscript.vue";
+import CompatWarning from "../components/CompatWarning.vue";
+import ComposerBar from "../components/ComposerBar.vue";
+import SessionStatsBar from "../components/SessionStatsBar.vue";
+import type {
+  ConnectionStatus,
+  TranscriptEntry,
+} from "../composables/useBridgeClient";
 import type { RpcModelInfo } from "../utils/models";
 import type { PendingTranscriptSessionEvent } from "../utils/transcript";
 

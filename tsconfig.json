@@ -13,11 +13,7 @@
     "resolveJsonModule": true,
     "outDir": "./dist",
     "rootDir": "./packages",
-    "types": ["node"],
-    "paths": {
-      "@pi-web/bridge": ["./packages/bridge"],
-      "@pi-web/bridge/*": ["./packages/bridge/*"]
-    }
+    "types": ["node"]
   },
   "include": ["packages/bridge/**/*.ts", "packages/bin/**/*.ts"],
   "exclude": ["node_modules", "dist"]
