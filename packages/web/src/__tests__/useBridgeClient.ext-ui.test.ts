@@ -427,7 +427,7 @@ describe("extension_ui_request handling", () => {
       ]);
 
       ws.send.mockClear();
-      now.value += 1_500;
+      now.value += 11_000;
 
       const secondFetch = client.fetchWorkspaceEntries();
       expect(ws.send).toHaveBeenCalledWith(

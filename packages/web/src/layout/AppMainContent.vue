@@ -38,6 +38,7 @@ defineProps<{
   workspaceEntries: readonly RpcWorkspaceEntry[];
   workspaceEntriesLoading: boolean;
   ensureWorkspaceEntries: (force?: boolean) => Promise<RpcWorkspaceEntry[]>;
+  workspaceContextKey: string | null;
   availableModels: readonly RpcModelInfo[];
   currentModel: RpcModelInfo | null;
   currentThinkingLevel: RpcThinkingLevel | null;
@@ -195,6 +196,7 @@ defineExpose({
       :commands="commands"
       :workspace-entries="workspaceEntries"
       :workspace-entries-loading="workspaceEntriesLoading"
+      :workspace-context-key="workspaceContextKey"
       :ensure-workspace-entries="ensureWorkspaceEntries"
       :models="availableModels"
       :selected-model="currentModel"
