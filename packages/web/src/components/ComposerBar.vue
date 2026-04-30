@@ -41,7 +41,7 @@ const props = defineProps<{
   commands: readonly RpcSlashCommand[];
   workspaceEntries: readonly RpcWorkspaceEntry[];
   workspaceEntriesLoading: boolean;
-  ensureWorkspaceEntries: () => Promise<RpcWorkspaceEntry[]>;
+  ensureWorkspaceEntries: (force?: boolean) => Promise<RpcWorkspaceEntry[]>;
   models: readonly RpcModelInfo[];
   selectedModel: RpcModelInfo | null;
   thinkingLevel: RpcThinkingLevel | null;

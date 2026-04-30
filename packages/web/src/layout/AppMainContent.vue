@@ -37,7 +37,7 @@ defineProps<{
   commands: readonly RpcSlashCommand[];
   workspaceEntries: readonly RpcWorkspaceEntry[];
   workspaceEntriesLoading: boolean;
-  ensureWorkspaceEntries: () => Promise<RpcWorkspaceEntry[]>;
+  ensureWorkspaceEntries: (force?: boolean) => Promise<RpcWorkspaceEntry[]>;
   availableModels: readonly RpcModelInfo[];
   currentModel: RpcModelInfo | null;
   currentThinkingLevel: RpcThinkingLevel | null;
