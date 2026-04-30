@@ -637,8 +637,34 @@ watch(
   flex-direction: column;
   gap: 4px;
   overflow-y: auto;
-  padding: 0 6px 8px 0;
-  scrollbar-gutter: stable;
+  margin-right: -8px;
+  padding: 0 14px 8px 0;
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-subtle) 55%, transparent)
+    transparent;
+}
+
+.rail-list::-webkit-scrollbar,
+.rail-list::-webkit-scrollbar:hover {
+  width: 8px;
+  background: transparent;
+}
+
+.rail-list::-webkit-scrollbar-track,
+.rail-list::-webkit-scrollbar-track:hover,
+.rail-list::-webkit-scrollbar-track:active,
+.rail-list::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.rail-list::-webkit-scrollbar-thumb,
+.rail-list::-webkit-scrollbar-thumb:hover,
+.rail-list::-webkit-scrollbar-thumb:active {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--text-subtle) 55%, transparent);
+  background-clip: padding-box;
 }
 
 .workspace-group {
