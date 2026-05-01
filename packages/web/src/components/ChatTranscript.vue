@@ -297,7 +297,7 @@ const streamingAssistantMessageIndex = computed(() => {
 const busyIndicatorLabel = computed(() =>
   props.isCompacting && !props.isStreaming
     ? "Compacting context"
-    : "Assistant is responding",
+    : "Responding",
 );
 const lightboxImages = ref<ImageContentBlock[]>([]);
 const lightboxIndex = ref(0);
@@ -856,14 +856,6 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
                   )
                 "
               >
-                <span class="tool-inline-caret" aria-hidden="true">{{
-                  isToolBlockExpanded(
-                    messageStableKey(item.message, item.messageIndex),
-                    -1,
-                  )
-                    ? "v"
-                    : ">"
-                }}</span>
                 <span class="tool-inline-summary">
                   <span class="tool-inline-name">{{
                     toolResultName(item.message)
@@ -972,14 +964,6 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
                   )
                 "
               >
-                <span class="tool-inline-caret" aria-hidden="true">{{
-                  isToolBlockExpanded(
-                    messageStableKey(item.message, item.messageIndex),
-                    -2,
-                  )
-                    ? "v"
-                    : ">"
-                }}</span>
                 <span class="tool-inline-summary">
                   <span class="tool-inline-name">
                     {{ errorSummaryLabel(item.message) }}
@@ -1121,14 +1105,6 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
                         )
                       "
                     >
-                      <span class="tool-inline-caret" aria-hidden="true">{{
-                        isToolBlockExpanded(
-                          messageStableKey(item.message, item.messageIndex),
-                          bIdx,
-                        )
-                          ? "v"
-                          : ">"
-                      }}</span>
                       <span class="tool-inline-summary">
                         <span class="tool-inline-name">{{
                           toolBlockDescriptor(block).name
@@ -1642,7 +1618,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 }
 
 .thinking-block {
-  padding-left: 10px;
+  padding-left: 0;
 }
 
 .system-block {
@@ -1757,7 +1733,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 
 .tool-inline-toggle {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: baseline;
   column-gap: 8px;
   width: 100%;
@@ -1785,15 +1761,6 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   text-decoration: underline;
   text-decoration-color: var(--accent);
   text-decoration-thickness: 1px;
-}
-
-.tool-inline-caret {
-  flex: none;
-  width: 10px;
-  font-family: var(--pi-font-mono);
-  font-size: 0.72rem;
-  line-height: 1;
-  color: var(--text-subtle);
 }
 
 .tool-inline-summary {
@@ -1942,9 +1909,10 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
+  margin: 0;
   padding: 0 0 8px 14px;
-  width: min(920px, calc(100% - 64px));
-  margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .busy-label {
@@ -2022,19 +1990,19 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   }
 
   .tool-inline-toggle {
-    grid-template-columns: 10px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: flex-start;
     row-gap: 2px;
   }
 
   .tool-inline-meta,
   .tool-inline-diff {
-    grid-column: 2;
+    grid-column: 1;
     max-width: 100%;
   }
 
   .streaming-indicator {
-    width: calc(100% - 32px);
+    width: 100%;
     padding-left: 0;
   }
 }
@@ -2089,7 +2057,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   }
 
   .streaming-indicator {
-    width: calc(100% - 24px);
+    width: 100%;
   }
 }
 </style>
