@@ -2577,6 +2577,55 @@ describe("WsRpcAdapter", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
+    it("includes files from symlinked directories in workspace entries", async () => {
+      const tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pi-web-workspace-symlink-test-"),
+      );
+      const targetDir = path.join(tmpDir, "actual-src");
+      const linkDir = path.join(tmpDir, "linked-src");
+      fs.mkdirSync(path.join(targetDir, "nested"), { recursive: true });
+      fs.writeFileSync(
+        path.join(targetDir, "nested", "linked.ts"),
+        "export const linked = true;\n",
+      );
+      fs.symlinkSync(
+        targetDir,
+        linkDir,
+        process.platform === "win32" ? "junction" : "dir",
+      );
+      context.ctx.cwd = os.tmpdir();
+
+      const command: RpcCommand = {
+        id: "cmd-workspace-symlink",
+        type: "list_workspace_entries",
+        workspacePath: tmpDir,
+      };
+      (
+        ws as unknown as { trigger: (event: string, data: Buffer) => void }
+      ).trigger(
+        "message",
+        Buffer.from(JSON.stringify({ type: "command", payload: command })),
+      );
+
+      await new Promise(r => setTimeout(r, 10));
+
+      const sendCalls = (ws.send as ReturnType<typeof vi.fn>).mock.calls;
+      const lastCall = sendCalls[sendCalls.length - 1][0] as string;
+      const response = JSON.parse(lastCall);
+
+      expect(response.payload.command).toBe("list_workspace_entries");
+      expect(response.payload.success).toBe(true);
+      expect(response.payload.data.entries).toEqual(
+        expect.arrayContaining([
+          { path: "linked-src", kind: "directory" },
+          { path: "linked-src/nested", kind: "directory" },
+          { path: "linked-src/nested/linked.ts", kind: "file" },
+        ]),
+      );
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
     it("refreshes workspace entry cache when forced or the workspace changes", async () => {
       const workspaceA = fs.mkdtempSync(
         path.join(os.tmpdir(), "pi-web-workspace-a-"),

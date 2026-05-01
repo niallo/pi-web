@@ -885,7 +885,7 @@ function collectWorkspaceEntries(
 }
 
 function listWorkspaceFilesWithRipgrep(cwd: string): string[] | null {
-  const args = ["--files", "--hidden", "-g", "!.git"];
+  const args = ["--files", "--hidden", "--follow", "-g", "!.git"];
   const rootIgnoreFile = path.join(cwd, ".gitignore");
   if (fs.existsSync(rootIgnoreFile)) {
     args.push("--ignore-file", rootIgnoreFile);
