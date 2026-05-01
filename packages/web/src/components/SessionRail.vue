@@ -827,10 +827,14 @@ watch(
 }
 
 .item-indicator {
+  position: absolute;
+  left: 4px;
+  top: 50%;
   width: 2px;
   height: 14px;
   border-radius: 999px;
   background: transparent;
+  transform: translateY(-50%);
   flex-shrink: 0;
 }
 
