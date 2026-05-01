@@ -1295,7 +1295,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   padding: 24px 32px 12px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 8px;
   background: transparent;
   scrollbar-width: none;
 }
@@ -1504,7 +1504,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 .message-content.tool,
 .message-content.system {
   width: 100%;
-  padding-left: 14px;
+  padding-left: 10px;
 }
 
 .message-debug-id {
@@ -1610,11 +1610,11 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 .system-block + .tool-inline-block,
 .system-block + .message-image-block,
 .system-block + .system-block {
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
 .tool-inline-block + .tool-inline-block {
-  margin-top: 16px;
+  margin-top: 6px;
 }
 
 .thinking-block {
@@ -1707,6 +1707,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   border: none;
   color: var(--text-muted);
   font-size: 0.7rem;
+  line-height: 1.3;
   cursor: pointer;
 }
 
@@ -1728,7 +1729,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 .tool-inline {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .tool-inline-toggle {
@@ -1775,7 +1776,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   font-family: var(--pi-font-mono);
   font-size: 0.72rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.3;
   color: var(--text-muted);
 }
 
@@ -1785,7 +1786,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.72rem;
-  line-height: 1.4;
+  line-height: 1.3;
   color: var(--text-subtle);
 }
 
@@ -1797,7 +1798,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.66rem;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .tool-inline-meta {
@@ -1828,8 +1829,8 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 .tool-inline-details {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 2px;
+  gap: 6px;
+  padding-top: 1px;
 }
 
 .tool-inline-section {
