@@ -146,9 +146,9 @@ function fileTabLabel(filePath: string): string {
 .rail-tabs {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 0 12px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 3px;
+  padding: 3px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -162,44 +162,51 @@ function fileTabLabel(filePath: string): string {
   align-items: center;
   min-width: 0;
   flex-shrink: 0;
+  padding: 0 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  transition: background 0.14s ease;
+}
+
+.rail-tab-item:hover {
+  background: color-mix(in srgb, var(--panel-2) 44%, transparent);
+}
+
+.rail-tab-item:focus-within {
+  background: color-mix(in srgb, var(--surface-active) 28%, var(--panel-2));
+}
+
+.rail-tab-item.active {
+  background: color-mix(in srgb, var(--panel-2) 92%, var(--rail-bg));
 }
 
 .rail-tab {
   min-width: 0;
-  height: 34px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 2px;
+  gap: 5px;
+  padding: 0;
   border: none;
-  border-radius: 0;
-  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text-subtle);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease;
+  transition: color 0.12s ease;
 }
 
 .rail-tab:hover,
-.rail-tab-close:hover {
+.rail-tab-close:hover,
+.rail-tab-item.active .rail-tab,
+.rail-tab-item.active .rail-tab-close {
   color: var(--text);
 }
 
 .rail-tab:focus-visible,
 .rail-tab-close:focus-visible {
   outline: none;
-  color: var(--text);
-  border-color: var(--accent);
-}
-
-.rail-tab-item.active .rail-tab,
-.rail-tab-item.active .rail-tab-close {
-  color: var(--text);
-  border-color: var(--accent);
 }
 
 .rail-tab-label {
@@ -212,23 +219,20 @@ function fileTabLabel(filePath: string): string {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 34px;
+  width: 14px;
+  height: 30px;
   margin-left: 4px;
   padding: 0;
   border: none;
-  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--text-subtle);
   cursor: pointer;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease;
+  transition: color 0.12s ease;
 }
 
 .rail-tab-close-icon {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
 }
 
 .rail-panel {
@@ -291,13 +295,13 @@ function fileTabLabel(filePath: string): string {
   }
 
   .rail-tabs {
-    gap: 12px;
-    padding: 10px 10px 0;
+    gap: 3px;
+    padding: 3px 8px;
   }
 
   .rail-tab,
   .rail-tab-close {
-    height: 38px;
+    height: 30px;
   }
 
   .rail-tab-label {
