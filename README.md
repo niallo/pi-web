@@ -8,6 +8,15 @@ enjoy the same experience in pi tui.
 
 ---
 
+## Feature
+
+- Full-featured pi tui experience
+- Codex-like file viewer(review panel are coming)
+- Base46 color theme system(Welcome for new theme contribute).
+- Stateless, reuse the pi's sessions and config
+
+---
+
 ## Quick start
 
 Install the published package into your Pi environment:
