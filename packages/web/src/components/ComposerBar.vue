@@ -700,7 +700,7 @@ function handleInputKeydown(e: KeyboardEvent) {
       e.key === "Escape" ||
       (filteredSlashCommands.value.length > 0 &&
         !composing &&
-        (e.key === "Enter" || e.key === "Tab")))
+        ((!e.shiftKey && e.key === "Enter") || e.key === "Tab")))
   ) {
     commandPaletteRef.value.handleKeydown(e);
     return;
@@ -714,7 +714,7 @@ function handleInputKeydown(e: KeyboardEvent) {
       e.key === "Escape" ||
       ((props.workspaceEntriesLoading || mentionSuggestions.value.length > 0) &&
         !composing &&
-        (e.key === "Enter" || e.key === "Tab")))
+        ((!e.shiftKey && e.key === "Enter") || e.key === "Tab")))
   ) {
     mentionPaletteRef.value.handleKeydown(e);
     return;
@@ -727,12 +727,9 @@ function handleInputKeydown(e: KeyboardEvent) {
   }
 
   if (e.key === "Enter") {
-    if (composing) return;
-    if (e.shiftKey && !props.isStreaming) {
-      return;
-    }
+    if (composing || e.shiftKey) return;
     e.preventDefault();
-    handleSubmit(e.shiftKey && props.isStreaming);
+    handleSubmit(props.isStreaming);
   }
 }
 

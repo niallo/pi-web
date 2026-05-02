@@ -742,7 +742,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
       <p class="empty-title">Start a conversation</p>
       <p class="empty-subtitle">Start typing to keep the session moving.</p>
       <div class="empty-hints">
-        <span class="hint-chip">Enter send</span>
+        <span class="hint-chip">Enter send / steer</span>
         <span class="hint-chip">Drop or paste images</span>
       </div>
     </div>
