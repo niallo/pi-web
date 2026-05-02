@@ -53,16 +53,21 @@ function buildDirenvEnvironment(cwd: string): RpcWorkspaceEnvironment | null {
   };
 }
 
-function normalizePythonEnvLabel(value: string | null | undefined): string | null {
+function normalizePythonEnvLabel(
+  value: string | null | undefined,
+): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
     return null;
   }
 
-  return trimmed.replace(/^['\"]|['\"]$/g, "").trim() || null;
+  return trimmed.replace(/^['"]|['"]$/g, "").trim() || null;
 }
 
-function readPythonVenvPrompt(cwd: string, activateScript: string): string | null {
+function readPythonVenvPrompt(
+  cwd: string,
+  activateScript: string,
+): string | null {
   const activateScriptPath = path.join(cwd, activateScript);
   const venvRoot = path.dirname(path.dirname(activateScriptPath));
   const pyvenvCfg = readTextFile(path.join(venvRoot, "pyvenv.cfg"));
@@ -79,9 +84,7 @@ function readPythonVenvPrompt(cwd: string, activateScript: string): string | nul
     return null;
   }
 
-  const promptMatch = activateContents.match(
-    /^VIRTUAL_ENV_PROMPT=(.+)$/m,
-  );
+  const promptMatch = activateContents.match(/^VIRTUAL_ENV_PROMPT=(.+)$/m);
   return normalizePythonEnvLabel(promptMatch?.[1]);
 }
 

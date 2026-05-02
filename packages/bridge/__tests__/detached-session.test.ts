@@ -87,9 +87,11 @@ describe("detached-session", () => {
     fs.writeFileSync(path.join(workspaceDir, ".envrc"), "use nix\n", "utf8");
     fs.writeFileSync(
       path.join(workspaceDir, ".venv", "bin", "activate"),
-      ["# activate", "VIRTUAL_ENV_PROMPT=.venv", "export VIRTUAL_ENV_PROMPT"].join(
-        "\n",
-      ) + "\n",
+      [
+        "# activate",
+        "VIRTUAL_ENV_PROMPT=.venv",
+        "export VIRTUAL_ENV_PROMPT",
+      ].join("\n") + "\n",
       "utf8",
     );
 
