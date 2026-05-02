@@ -810,6 +810,8 @@ function sessionMatchesListQuery(
     .some(value => value!.toLowerCase().includes(q));
 }
 
+const DEFAULT_PENDING_SESSION_NAME = "New session";
+
 function readWorkspaceSessionSummary(
   sessionPath: string,
   running: boolean,
@@ -841,8 +843,7 @@ function readWorkspaceSessionSummary(
 
   return {
     id: header.id,
-    name:
-      explicitName ?? firstUserMessage ?? path.basename(sessionPath, ".jsonl"),
+    name: explicitName ?? firstUserMessage ?? DEFAULT_PENDING_SESSION_NAME,
     path: sessionPath,
     isRunning: running,
     timestamp,
@@ -2170,7 +2171,7 @@ function sessionDisplayName(
     getEntries: () => unknown[];
     getSessionId: () => string;
   },
-  sessionPath?: string,
+  _sessionPath?: string,
 ): string {
   const firstUserEntry = sessionManager.getEntries().find(entry => {
     if (
@@ -2205,9 +2206,7 @@ function sessionDisplayName(
   const explicitName = sessionManager.getSessionName()?.trim();
   if (explicitName) return explicitName;
 
-  return sessionPath
-    ? path.basename(sessionPath, ".jsonl")
-    : sessionManager.getSessionId();
+  return DEFAULT_PENDING_SESSION_NAME;
 }
 
 function formatFallbackTreeEntryLabel(

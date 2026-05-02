@@ -1976,6 +1976,56 @@ describe("WsRpcAdapter", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
+    it("shows a generic label for empty sessions instead of the session filename", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-empty-"));
+      const emptySessionFile = path.join(tmpDir, "session-123.jsonl");
+      fs.writeFileSync(
+        emptySessionFile,
+        [
+          JSON.stringify({
+            type: "session",
+            id: "empty-id",
+            timestamp: "2025-01-03T00:00:00Z",
+            cwd: tmpDir,
+          }),
+        ].join("\n") + "\n",
+      );
+      (
+        context.ctx.sessionManager.getSessionFile as ReturnType<typeof vi.fn>
+      ).mockReturnValue(emptySessionFile);
+
+      const command: RpcCommand = { id: "cmd-empty", type: "list_sessions" };
+      (
+        ws as unknown as { trigger: (event: string, data: Buffer) => void }
+      ).trigger(
+        "message",
+        Buffer.from(JSON.stringify({ type: "command", payload: command })),
+      );
+
+      await new Promise(r => setTimeout(r, 10));
+
+      const sendCalls = (ws.send as ReturnType<typeof vi.fn>).mock.calls.map(
+        call => JSON.parse(call[0] as string),
+      );
+      const responseCall = sendCalls.find(
+        call =>
+          call.type === "response" &&
+          call.payload.command === "list_sessions" &&
+          call.payload.id === "cmd-empty",
+      );
+
+      expect(responseCall?.payload.success).toBe(true);
+      expect(responseCall?.payload.data.sessions).toContainEqual(
+        expect.objectContaining({
+          id: "empty-id",
+          name: "New session",
+          path: emptySessionFile,
+        }),
+      );
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
     it("filters active sessions out of workspace-scoped session lists", async () => {
       const workspaceA = fs.mkdtempSync(
         path.join(os.tmpdir(), "pi-web-workspace-a-"),
@@ -3248,6 +3298,7 @@ describe("WsRpcAdapter", () => {
       );
       expect(responseCall?.payload.data.cancelled).toBe(false);
       expect(responseCall?.payload.data.sessionId).toBeTruthy();
+      expect(responseCall?.payload.data.sessionName).toBe("New session");
       expect(responseCall?.payload.data.transcript.messages).toEqual([]);
       expect(responseCall?.payload.data.transcript.hasOlder).toBe(false);
 

@@ -109,14 +109,25 @@ const hasSessionOutline = computed(
     transcript.value.length > 0 ||
     treeEntries.value.length > 0,
 );
+
+function getWorkspaceDisplayName(workspacePath?: string | null): string | null {
+  const normalizedPath = workspacePath?.trim();
+  if (!normalizedPath) return null;
+  const parts = normalizedPath.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? normalizedPath;
+}
+
+const activeSessionEntry = computed(
+  () =>
+    sessions.value.find(
+      session =>
+        session.path === activeSessionPath.value ||
+        session.id === sessionState.value?.sessionId,
+    ) ?? null,
+);
 const activeSessionLabel = computed(() => {
-  const active = sessions.value.find(
-    session =>
-      session.path === activeSessionPath.value ||
-      session.id === sessionState.value?.sessionId,
-  );
-  if (active?.name) {
-    return active.name;
+  if (activeSessionEntry.value?.name) {
+    return activeSessionEntry.value.name;
   }
   if (!hasSessionOutline.value) {
     return "No active session";
@@ -125,6 +136,14 @@ const activeSessionLabel = computed(() => {
     sessionState.value?.sessionName ??
     sessionState.value?.sessionId ??
     "Untitled session"
+  );
+});
+const activeWorkspaceLabel = computed(() => {
+  const workspaceName = activeSessionEntry.value?.workspaceName?.trim();
+  return (
+    workspaceName ||
+    getWorkspaceDisplayName(activeSessionEntry.value?.workspacePath) ||
+    getWorkspaceDisplayName(sessionState.value?.workspacePath)
   );
 });
 const TREE_TAB_ID = "tree";
@@ -1009,6 +1028,8 @@ onBeforeUnmount(() => {
       <AppHeader
         :theme="activeTheme.mode"
         :next-theme-label="nextThemeLabel"
+        :session-title="activeSessionLabel"
+        :workspace-name="activeWorkspaceLabel"
         :show-debug-toggle="debugModeAvailable"
         :debug-mode="debugMode"
         :debug-mode-label="debugModeLabel"

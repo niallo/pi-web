@@ -14,6 +14,8 @@ import {
 defineProps<{
   theme: "dark" | "light";
   nextThemeLabel: "dark" | "light";
+  sessionTitle: string;
+  workspaceName: string | null;
   showDebugToggle: boolean;
   debugMode: boolean;
   debugModeLabel: string;
@@ -69,7 +71,8 @@ const emit = defineEmits<{
         />
       </button>
       <div class="header-brand">
-        <h1 class="app-title">Pi</h1>
+        <p v-if="workspaceName" class="workspace-name">{{ workspaceName }}</p>
+        <h1 class="app-title">{{ sessionTitle }}</h1>
       </div>
     </div>
     <div class="header-status">
@@ -168,11 +171,29 @@ const emit = defineEmits<{
 
 .header-brand {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.workspace-name,
+.app-title {
+  margin: 0;
+  max-width: min(100%, 48vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-name {
+  font-size: 0.68rem;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-subtle);
 }
 
 .app-title {
-  margin: 0;
   font-size: 0.95rem;
   line-height: 1;
   font-weight: 600;
@@ -295,6 +316,11 @@ const emit = defineEmits<{
 
   .header-leading {
     gap: 10px;
+  }
+
+  .workspace-name,
+  .app-title {
+    max-width: min(100%, 42vw);
   }
 
   .hamburger,
