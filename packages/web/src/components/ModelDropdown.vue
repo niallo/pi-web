@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
   padding: 0 9px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  background: var(--bg);
   color: var(--text-subtle);
   cursor: pointer;
   transition:
@@ -257,13 +257,13 @@ onBeforeUnmount(() => {
 }
 
 .model-trigger:hover:not(:disabled) {
-  background: var(--surface-hover);
+  background: var(--bg);
   border-color: var(--border-strong);
   color: var(--text);
 }
 
 .model-trigger[aria-expanded="true"] {
-  background: var(--surface-active);
+  background: var(--bg);
   border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
   color: var(--text);
 }

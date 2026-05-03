@@ -913,7 +913,7 @@ resizeTextarea();
   flex-shrink: 0;
   padding: 6px 24px 12px;
   padding-bottom: max(12px, env(safe-area-inset-bottom));
-  background: linear-gradient(to top, var(--bg), var(--composer-fade));
+  background: var(--bg);
 }
 
 .composer-inner-wrap {
@@ -929,11 +929,7 @@ resizeTextarea();
   padding: 6px;
   border-radius: 18px;
   border: 1px solid var(--border);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--bg-elevated) 92%, transparent),
-    var(--panel)
-  );
+  background: var(--bg);
   box-shadow: var(--shadow-raised);
   transition:
     border-color 0.15s ease,
@@ -990,7 +986,7 @@ resizeTextarea();
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--panel) 82%, transparent);
+  background: var(--bg);
   color: var(--text-muted);
   font-size: 0.7rem;
   cursor: pointer;
@@ -1002,7 +998,7 @@ resizeTextarea();
 
 .revision-cancel-button:hover {
   border-color: var(--border-strong);
-  background: var(--surface-hover);
+  background: var(--bg);
   color: var(--text);
 }
 
@@ -1014,11 +1010,7 @@ resizeTextarea();
 
 .composer-dock:focus-within {
   border-color: var(--border-strong);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--bg-elevated) 94%, transparent),
-    color-mix(in srgb, var(--panel) 96%, var(--panel-2))
-  );
+  background: var(--bg);
   box-shadow:
     0 0 0 2px var(--focus-ring-muted),
     var(--shadow-raised);
@@ -1026,11 +1018,7 @@ resizeTextarea();
 
 .composer-dock.drag-active {
   border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--surface-active) 52%, var(--bg-elevated)),
-    color-mix(in srgb, var(--panel) 96%, var(--panel-2))
-  );
+  background: var(--bg);
   box-shadow:
     0 0 0 2px var(--focus-ring),
     var(--shadow-raised);
@@ -1170,7 +1158,7 @@ resizeTextarea();
   margin-top: 6px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  background: var(--bg);
   color: var(--text-subtle);
   cursor: pointer;
   transition:
@@ -1183,7 +1171,7 @@ resizeTextarea();
 .attachment-chip-remove:hover,
 .attach-btn:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: var(--surface-hover);
+  background: var(--bg);
   color: var(--text);
 }
 
@@ -1191,7 +1179,7 @@ resizeTextarea();
 .attach-btn:focus-visible {
   outline: none;
   border-color: var(--accent);
-  background: var(--surface-hover);
+  background: var(--bg);
   color: var(--text);
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
@@ -1212,7 +1200,7 @@ resizeTextarea();
 .attach-btn.active {
   color: var(--text);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--border-strong));
-  background: var(--surface-selected);
+  background: var(--bg);
 }
 
 .prompt-input {
@@ -1253,7 +1241,7 @@ resizeTextarea();
   height: 25px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: var(--button-bg);
+  background: var(--bg);
   color: var(--text);
   cursor: pointer;
   transition:
@@ -1264,7 +1252,7 @@ resizeTextarea();
 }
 
 .send-btn:hover:not(:disabled) {
-  background: var(--button-hover);
+  background: var(--bg);
   border-color: var(--border-strong);
   transform: translateY(-1px);
 }
@@ -1277,12 +1265,12 @@ resizeTextarea();
 
 .send-btn.stop {
   border-color: color-mix(in srgb, var(--error-border) 92%, var(--border));
-  background: color-mix(in srgb, var(--error-bg) 82%, var(--button-bg));
+  background: var(--bg);
   color: var(--error-text);
 }
 
 .send-btn.stop:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--error-bg) 92%, var(--button-hover));
+  background: var(--bg);
   border-color: color-mix(
     in srgb,
     var(--error-border) 100%,
@@ -1336,7 +1324,7 @@ resizeTextarea();
   padding: 0 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  background: var(--bg);
   color: var(--text-subtle);
   cursor: pointer;
   user-select: none;
@@ -1349,13 +1337,13 @@ resizeTextarea();
 
 .toggle-chip:hover:not(.disabled) {
   border-color: var(--border-strong);
-  background: var(--surface-hover);
+  background: var(--bg);
   color: var(--text);
 }
 
 .toggle-chip:focus-within {
   border-color: var(--accent);
-  background: var(--surface-active);
+  background: var(--bg);
   color: var(--text);
   box-shadow: 0 0 0 3px var(--focus-ring);
 }

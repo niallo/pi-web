@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
   padding: 0 9px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
-  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  background: var(--bg);
   color: var(--text-subtle);
   cursor: pointer;
   user-select: none;
@@ -275,13 +275,13 @@ onBeforeUnmount(() => {
 
 .thinking-trigger:hover:not(:disabled) {
   border-color: var(--border-strong);
-  background: var(--surface-hover);
+  background: var(--bg);
   color: var(--text);
 }
 
 .thinking-trigger[aria-expanded="true"] {
   border-color: color-mix(in srgb, var(--accent) 36%, var(--border-strong));
-  background: var(--surface-active);
+  background: var(--bg);
   color: var(--text);
 }
 
