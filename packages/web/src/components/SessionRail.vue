@@ -20,7 +20,7 @@ const emit = defineEmits<{
   ];
 }>();
 
-const RECENT_SESSION_LIMIT = 10;
+const RECENT_SESSION_LIMIT = 5;
 const UNKNOWN_WORKSPACE_ID = "unknown-workspace";
 const MENU_WIDTH = 136;
 const MENU_HEIGHT = 80;
