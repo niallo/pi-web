@@ -66,6 +66,22 @@ describe("buildToolInlineModel", () => {
     expect(model.meta).toBe("exit 2 · timeout 30s");
   });
 
+  it("formats bash commands with shell prompts in the detail view", () => {
+    const block: ToolContentBlock = {
+      kind: "tool",
+      toolName: "bash",
+      toolArgs: { command: "pwd\necho done" },
+      argumentsText: '{"command":"pwd\\necho done"}',
+      toolStatus: "pending",
+    };
+
+    expect(buildToolDetailModel(block)).toEqual({
+      kind: "bash",
+      command: "$ pwd\n$ echo done",
+      path: undefined,
+    });
+  });
+
   it("exposes edit diff stats when a diff is available", () => {
     const diff = [
       "--- src/app.ts",

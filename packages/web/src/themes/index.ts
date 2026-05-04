@@ -186,7 +186,7 @@ export function resolveAppThemeVars(
     "--panel-3": base30.one_bg3,
     "--tool-surface": base30.one_bg,
     "--tool-surface-strong": base30.one_bg2,
-    "--tool-output-bg": base30.statusline_bg,
+    "--tool-output-bg": base16.base01,
     "--tool-output-border": base30.one_bg3,
     "--diff-added-bg": toRgba(base16.base0B, mode === "dark" ? 0.15 : 0.12),
     "--diff-added-text": mode === "dark" ? "#aff5b4" : "#116329",

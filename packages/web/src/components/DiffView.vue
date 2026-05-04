@@ -64,7 +64,7 @@ function classifyLine(
 
 .diff-line td {
   padding: 0;
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .diff-line pre {

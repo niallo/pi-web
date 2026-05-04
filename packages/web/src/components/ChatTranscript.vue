@@ -1166,9 +1166,16 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
                           v-else-if="toolBlockDetail(block).kind === 'bash'"
                           class="tool-inline-code-panel"
                         >
-                          <pre class="tool-inline-code-output">{{
-                            toolBlockDetail(block).text
-                          }}</pre>
+                          <pre
+                            v-if="toolBlockDetail(block).command"
+                            class="tool-inline-code-output tool-inline-command-output"
+                            >{{ toolBlockDetail(block).command }}</pre
+                          >
+                          <pre
+                            v-if="toolBlockDetail(block).text"
+                            class="tool-inline-code-output"
+                            >{{ toolBlockDetail(block).text }}</pre
+                          >
                         </div>
                         <pre v-else class="tool-inline-pre">{{
                           toolBlockDetail(block).text
@@ -1829,7 +1836,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .tool-inline-code-output {
@@ -1860,7 +1867,7 @@ defineExpose({ preserveScroll, rememberSessionScroll, scrollToMessageId });
 .tool-inline-empty {
   font-size: 0.72rem;
   line-height: 1.5;
-  color: var(--text-subtle);
+  color: var(--text);
 }
 
 .toggle-icon {

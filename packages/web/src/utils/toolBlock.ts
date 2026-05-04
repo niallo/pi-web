@@ -16,6 +16,7 @@ export interface ToolDetailModel {
   kind: "diff" | "code" | "bash" | "text" | "empty";
   text?: string;
   path?: string;
+  command?: string;
 }
 
 type ToolArgsRecord = JsonObject;
@@ -113,6 +114,10 @@ function formatToolMeta(
 export function buildToolDetailModel(block: ToolContentBlock): ToolDetailModel {
   const args = asRecord(block.toolArgs);
   const path = stringValue(args, "path");
+  const command =
+    block.toolName === "bash"
+      ? formatBashCommand(stringValue(args, "command"))
+      : undefined;
   const diff = blockResultDiff(block.resultDetails)?.replace(/\r/g, "").trim();
   if (block.toolName === "edit" && diff) {
     return { kind: "diff", text: diff, path };
@@ -128,9 +133,14 @@ export function buildToolDetailModel(block: ToolContentBlock): ToolDetailModel {
   }
 
   const text = toolResultText(block);
-  if (!text) return { kind: "empty", path };
+  if (!text) {
+    if (block.toolName === "bash" && command) {
+      return { kind: "bash", path, command };
+    }
+    return { kind: "empty", path };
+  }
   if (block.toolName === "read") return { kind: "code", text, path };
-  if (block.toolName === "bash") return { kind: "bash", text, path };
+  if (block.toolName === "bash") return { kind: "bash", text, path, command };
   return { kind: "text", text, path };
 }
 
@@ -214,6 +224,16 @@ function arrayValue(
 ): JsonValue[] | undefined {
   const value = args?.[key];
   return Array.isArray(value) ? value : undefined;
+}
+
+function formatBashCommand(command: string | undefined): string | undefined {
+  if (!command) return undefined;
+  const normalized = command.replace(/\r/g, "");
+  if (!normalized.trim()) return undefined;
+  return normalized
+    .split("\n")
+    .map(line => `$ ${line}`)
+    .join("\n");
 }
 
 function blockResultDiff(
