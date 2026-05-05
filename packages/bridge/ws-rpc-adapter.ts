@@ -735,14 +735,55 @@ function parseJsonLine(line: string): Record<string, unknown> | null {
   }
 }
 
+function parseJsonStringLiteral(value: string): string | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractUserMessageTextFromRawLine(line: string): string | undefined {
+  if (
+    !/"type"\s*:\s*"message"/.test(line) ||
+    !/"role"\s*:\s*"user"/.test(line)
+  ) {
+    return undefined;
+  }
+
+  const contentArrayTextMatch = line.match(
+    /"message"\s*:\s*\{[\s\S]*?"role"\s*:\s*"user"[\s\S]*?"content"\s*:\s*\[[\s\S]*?\{\s*"type"\s*:\s*"text"\s*,\s*"text"\s*:\s*("(?:\\.|[^"\\])*")/,
+  );
+  const contentStringMatch = line.match(
+    /"message"\s*:\s*\{[\s\S]*?"role"\s*:\s*"user"[\s\S]*?"content"\s*:\s*("(?:\\.|[^"\\])*")/,
+  );
+  const textFieldMatch = line.match(
+    /"message"\s*:\s*\{[\s\S]*?"role"\s*:\s*"user"[\s\S]*?"text"\s*:\s*("(?:\\.|[^"\\])*")/,
+  );
+
+  return [
+    contentArrayTextMatch?.[1],
+    contentStringMatch?.[1],
+    textFieldMatch?.[1],
+  ]
+    .map(value => (value ? parseJsonStringLiteral(value) : undefined))
+    .find((value): value is string => typeof value === "string");
+}
+
 function findFirstUserMessageText(chunk: string): string | undefined {
   for (const line of chunk.split("\n")) {
     const entry = parseJsonLine(line);
-    if (entry?.type !== "message") continue;
-    const message = entry.message as { role?: unknown; content?: unknown };
-    if (message?.role !== "user") continue;
-    const text = collapseWhitespace(extractMessageText(message));
-    if (text) return text;
+    if (entry?.type === "message") {
+      const message = entry.message as { role?: unknown; content?: unknown };
+      if (message?.role !== "user") continue;
+      const text = collapseWhitespace(extractMessageText(message));
+      if (text) return text;
+      continue;
+    }
+
+    const fallbackText = extractUserMessageTextFromRawLine(line);
+    if (fallbackText) return collapseWhitespace(fallbackText);
   }
   return undefined;
 }

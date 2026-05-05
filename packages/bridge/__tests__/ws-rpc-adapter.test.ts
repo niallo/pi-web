@@ -2026,6 +2026,74 @@ describe("WsRpcAdapter", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
+    it("extracts the first user text from a truncated image-backed message", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-image-"));
+      const sessionFile = path.join(tmpDir, "session-with-image.jsonl");
+      fs.writeFileSync(
+        sessionFile,
+        [
+          JSON.stringify({
+            type: "session",
+            id: "image-id",
+            timestamp: "2025-01-03T00:00:00Z",
+            cwd: tmpDir,
+          }),
+          JSON.stringify({
+            type: "message",
+            id: "msg-1",
+            parentId: null,
+            timestamp: new Date().toISOString(),
+            message: {
+              role: "user",
+              content: [
+                { type: "text", text: "Title from text block" },
+                {
+                  type: "image",
+                  data: "a".repeat(90 * 1024),
+                  mimeType: "image/png",
+                },
+              ],
+              timestamp: Date.now(),
+            },
+          }),
+        ].join("\n") + "\n",
+      );
+      (
+        context.ctx.sessionManager.getSessionFile as ReturnType<typeof vi.fn>
+      ).mockReturnValue(sessionFile);
+
+      const command: RpcCommand = { id: "cmd-image", type: "list_sessions" };
+      (
+        ws as unknown as { trigger: (event: string, data: Buffer) => void }
+      ).trigger(
+        "message",
+        Buffer.from(JSON.stringify({ type: "command", payload: command })),
+      );
+
+      await new Promise(r => setTimeout(r, 10));
+
+      const sendCalls = (ws.send as ReturnType<typeof vi.fn>).mock.calls.map(
+        call => JSON.parse(call[0] as string),
+      );
+      const responseCall = sendCalls.find(
+        call =>
+          call.type === "response" &&
+          call.payload.command === "list_sessions" &&
+          call.payload.id === "cmd-image",
+      );
+
+      expect(responseCall?.payload.success).toBe(true);
+      expect(responseCall?.payload.data.sessions).toContainEqual(
+        expect.objectContaining({
+          id: "image-id",
+          name: "Title from text block",
+          path: sessionFile,
+        }),
+      );
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
     it("filters active sessions out of workspace-scoped session lists", async () => {
       const workspaceA = fs.mkdtempSync(
         path.join(os.tmpdir(), "pi-web-workspace-a-"),

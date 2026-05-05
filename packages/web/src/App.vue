@@ -126,14 +126,12 @@ const activeSessionEntry = computed(
     ) ?? null,
 );
 const activeSessionLabel = computed(() => {
-  if (activeSessionEntry.value?.name) {
-    return activeSessionEntry.value.name;
-  }
   if (!hasSessionOutline.value) {
     return "No active session";
   }
   return (
     sessionState.value?.sessionName ??
+    activeSessionEntry.value?.name ??
     sessionState.value?.sessionId ??
     "Untitled session"
   );
