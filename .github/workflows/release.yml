@@ -37,8 +37,10 @@ jobs:
             echo "Tag ${TAG_NAME} does not match package version v${PACKAGE_VERSION}"
             exit 1
           fi
-      - name: Type-check
-        run: pnpm run check
+      - name: Run Lints
+        run: pnpm run lint
+      - name: Run Svelet check
+        run: pnpm run check:web
       - name: Run tests
         run: pnpm test
       - name: Build server bundle
