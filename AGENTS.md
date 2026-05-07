@@ -9,10 +9,8 @@ This is a pnpm workspace monorepo with the following packages:
 
 - `@pi-web/bridge` (`packages/bridge/`) — WebSocket RPC bridge server
 - `@pi-web/bin` (`packages/bin/`) — Pi extension entry point
-- `@pi-web/svelte` (`packages/svelte/`) — Svelte 5 web client, current release
-  mainline
-- `@pi-web/web` (`packages/web/`) — Legacy Vue 3 web client, will be deprecated
-  future.
+- `@pi-web/svelte` (`packages/svelte/`) — Svelte 5 web client, current
+  release mainline
 
 ## Commands
 
@@ -22,10 +20,8 @@ This is a pnpm workspace monorepo with the following packages:
 - `pnpm run build:bin` — build bin package (Vite library mode)
 - `pnpm run build:svelte` — build Svelte client to `web-dist/`
 - `pnpm run build:web` — build the published web client (`packages/svelte/`)
-- `pnpm run build:vue` — build the legacy Vue client to `web-dist/`
 - `pnpm run dev:web` — start the published web client dev server
   (`packages/svelte/`)
-- `pnpm run dev:vue` — start the legacy Vue client dev server
 - `pnpm test` / `pnpm run test:watch` — run Vitest test suite
 - `pnpm fmt` / `pnpm run fmt:check` — format/check with `oxfmt`
 - `pnpm lint` / `pnpm run lint:fix` — lint/fix with `oxlint`
@@ -38,7 +34,6 @@ This is a pnpm workspace monorepo with the following packages:
   view
   - Compiled with tsc → `dist/bridge/`
 - `packages/svelte/` — Svelte 5 client (Vite + vitest), published to `web-dist/`
-- `packages/web/` — Legacy Vue 3 client (Vite + vitest)
 
 ## Important Tips
 
