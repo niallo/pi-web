@@ -6,6 +6,7 @@
     RpcThinkingLevel,
     RpcWorkspaceEntry,
   } from "@pi-web/bridge/types";
+  import Check from "lucide-svelte/icons/check";
   import CornerDownLeft from "lucide-svelte/icons/corner-down-left";
   import ImagePlus from "lucide-svelte/icons/image-plus";
   import Square from "lucide-svelte/icons/square";
@@ -406,8 +407,9 @@
     onSelectThinkingLevel(getNextThinkingLevel(thinkingLevel));
   }
 
-  function handleAutoCompactionChange(event: Event) {
-    onToggleAutoCompaction(Boolean((event.target as HTMLInputElement | null)?.checked));
+  function handleAutoCompactionToggle() {
+    if (isDisabled) return;
+    onToggleAutoCompaction(!autoCompactionEnabled);
   }
 
   function handleCancelRevision() {
@@ -729,16 +731,22 @@
             disabled={isDisabled}
             onSelect={(level: RpcThinkingLevel) => onSelectThinkingLevel(level)}
           />
-          <label class="toggle-chip" class:disabled={isDisabled}>
-            <input
-              class="toggle-chip-input"
-              type="checkbox"
-              checked={autoCompactionEnabled}
-              disabled={isDisabled}
-              onchange={handleAutoCompactionChange}
-            />
+          <button
+            type="button"
+            class="toggle-chip"
+            class:disabled={isDisabled}
+            class:checked={autoCompactionEnabled}
+            disabled={isDisabled}
+            aria-pressed={autoCompactionEnabled}
+            onclick={handleAutoCompactionToggle}
+          >
+            <span class="toggle-chip-icon" aria-hidden="true">
+              {#if autoCompactionEnabled}
+                <Check size={11} strokeWidth={2.5} />
+              {/if}
+            </span>
             <span class="toggle-chip-label">Auto compact</span>
-          </label>
+          </button>
         </div>
         <div class="composer-action-cluster">
           {#if attachmentSummary}
@@ -1092,6 +1100,7 @@
     color: var(--text-subtle);
     cursor: pointer;
     user-select: none;
+    font: inherit;
     transition:
       background 0.15s ease,
       border-color 0.15s ease,
@@ -1104,21 +1113,39 @@
     color: var(--text);
   }
 
-  .toggle-chip:focus-within {
+  .toggle-chip:focus-visible {
     background: var(--bg);
     color: var(--text);
+    outline: none;
   }
 
   .toggle-chip.disabled { opacity: 0.45; cursor: not-allowed; }
 
-  .toggle-chip-input {
+  .toggle-chip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 14px;
     height: 14px;
-    margin: 0;
-    accent-color: var(--text);
+    border-radius: 4px;
+    border: 1px solid color-mix(in srgb, var(--border-strong) 72%, transparent);
+    background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+    color: var(--bg);
+    transition:
+      border-color 0.15s ease,
+      background 0.15s ease,
+      color 0.15s ease;
   }
 
-  .toggle-chip-input:disabled { cursor: not-allowed; }
+  .toggle-chip.checked {
+    color: var(--text);
+  }
+
+  .toggle-chip.checked .toggle-chip-icon {
+    border-color: color-mix(in srgb, var(--text) 72%, transparent);
+    background: var(--text);
+    color: var(--bg);
+  }
 
   .toggle-chip-label {
     font-family: var(--pi-font-sans);
