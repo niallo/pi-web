@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { Comark } from "@comark/svelte";
   import DOMPurify from "dompurify";
-  import { marked } from "marked";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { highlightCodeHtml, readThemeMode } from "../utils/codeHighlight";
   import { parseInlineFileReference } from "../utils/fileReferences";
 
@@ -19,102 +19,33 @@
 
   type MermaidModule = typeof import("mermaid").default;
 
-  type CodeBlockSource = {
-    text: string;
-    lang: string;
-  };
-
-  type RenderedMarkdown = {
-    html: string;
-    mermaidSources: string[];
-    codeBlocks: CodeBlockSource[];
-  };
-
-  const MERMAID_SELECTOR = "[data-mermaid-index]";
-  const CODE_BLOCK_SELECTOR = "[data-code-index]";
+  const COMARK_OPTIONS = { html: false };
   const MERMAID_MIN_WIDTH = 420;
   const MERMAID_MAX_WIDTH = 900;
   const MERMAID_MIN_ZOOM = 0.5;
   const MERMAID_MAX_ZOOM = 2.5;
   const MERMAID_ZOOM_STEP = 0.25;
-  const HTML_ESCAPE: Record<string, string> = {
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  };
 
   let mermaidPromise: Promise<MermaidModule> | null = null;
   let renderVersion = 0;
   let codeRenderVersion = 0;
   let themeObserver: MutationObserver | undefined;
+  let contentObserver: MutationObserver | undefined;
+  let container = $state<HTMLDivElement | null>(null);
+  let postProcessScheduled = false;
+  let forceCodeRender = false;
+  let forceMermaidRender = false;
   const rendererId = Math.random().toString(36).slice(2);
-  let markdownBody = $state<HTMLDivElement | null>(null);
 
-  marked.setOptions({ gfm: true, breaks: true });
-
-  function escapeHtml(value: string): string {
-    return value.replace(/[&<>"']/g, char => HTML_ESCAPE[char] ?? char);
+  function markdownBody(): HTMLElement | null {
+    return container?.querySelector<HTMLElement>(".markdown-body") ?? null;
   }
 
-  function languageName(lang?: string): string {
-    return (lang ?? "").trim().split(/\s+/, 1)[0]?.toLowerCase() ?? "";
-  }
-
-  function mermaidPlaceholder(index: number, source: string): string {
-    return `<div class="mermaid-block" data-mermaid-index="${index}"><div class="mermaid-block-status" aria-live="polite">Rendering diagram...</div><pre class="mermaid-source"><code>${escapeHtml(source)}</code></pre></div>`;
-  }
-
-  function codeBlockPlaceholder(index: number, source: string, lang: string): string {
-    const className = lang ? ` class="language-${escapeHtml(lang)}"` : "";
-    return `<div class="markdown-code-block" data-code-index="${index}" aria-live="polite"><pre><code${className}>${escapeHtml(source)}</code></pre></div>`;
-  }
-
-  function fileReferenceLink(label: string, path: string, lineNumber: number): string {
-    return `<a class="markdown-file-ref" href="#" data-file-path="${escapeHtml(path)}" data-file-line="${lineNumber}" title="Open ${escapeHtml(path)} at line ${lineNumber}"><code>${escapeHtml(label)}</code></a>`;
-  }
-
-  function sanitizeMarkdownHtml(html: string): string {
-    return DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: [
-        "h1", "h2", "h3", "h4", "h5", "h6", "p", "br", "hr", "ul", "ol", "li",
-        "blockquote", "pre", "code", "em", "strong", "del", "ins", "a", "table",
-        "thead", "tbody", "tr", "th", "td", "img", "details", "summary",
-        "sup", "sub", "div", "span",
-      ],
-      ALLOWED_ATTR: [
-        "href", "target", "rel", "alt", "src", "title", "class", "start",
-        "reversed", "data-mermaid-index", "data-code-index", "data-file-path",
-        "data-file-line", "aria-live",
-      ],
-    });
-  }
-
-  function renderMarkdown(raw: string): RenderedMarkdown {
-    if (!raw) return { html: "", mermaidSources: [], codeBlocks: [] };
-    const mermaidSources: string[] = [];
-    const codeBlocks: CodeBlockSource[] = [];
-    const renderer = new marked.Renderer();
-
-    renderer.code = token => {
-      const lang = languageName(token.lang);
-      if (lang === "mermaid") {
-        const idx = mermaidSources.push(token.text) - 1;
-        return mermaidPlaceholder(idx, token.text);
-      }
-      const idx = codeBlocks.push({ text: token.text, lang }) - 1;
-      return codeBlockPlaceholder(idx, token.text, lang);
-    };
-
-    renderer.codespan = token => {
-      const fr = parseInlineFileReference(token.text);
-      if (!fr) return `<code>${escapeHtml(token.text)}</code>`;
-      return fileReferenceLink(token.text, fr.path, fr.lineNumber);
-    };
-
-    const html = marked.parse(raw, { renderer, gfm: true, breaks: true }) as string;
-    return { html: sanitizeMarkdownHtml(html), mermaidSources, codeBlocks };
+  function languageName(value?: string | null): string {
+    for (const token of (value ?? "").split(/\s+/)) {
+      if (token.startsWith("language-")) return token.slice("language-".length).toLowerCase();
+    }
+    return "";
   }
 
   function loadMermaid(): Promise<MermaidModule> {
@@ -232,12 +163,13 @@
         : null;
       if (!target) return;
       const currentZoom = readMermaidZoom(block);
-      if (target.dataset.mermaidZoomAction === "out")
+      if (target.dataset.mermaidZoomAction === "out") {
         updateMermaidZoom(block, currentZoom - MERMAID_ZOOM_STEP);
-      else if (target.dataset.mermaidZoomAction === "in")
+      } else if (target.dataset.mermaidZoomAction === "in") {
         updateMermaidZoom(block, currentZoom + MERMAID_ZOOM_STEP);
-      else
+      } else {
         updateMermaidZoom(block, 1);
+      }
     });
     block.prepend(toolbar);
     updateMermaidZoom(block, readMermaidZoom(block));
@@ -268,6 +200,7 @@
   function replaceWithMermaidSource(block: HTMLElement, source: string, statusText: string) {
     const status = document.createElement("div");
     status.className = "mermaid-block-status";
+    status.setAttribute("aria-live", "polite");
     status.textContent = statusText;
     const code = document.createElement("code");
     code.textContent = source;
@@ -276,13 +209,15 @@
     pre.append(code);
     delete block.dataset.mermaidBaseWidth;
     delete block.dataset.mermaidZoom;
+    delete block.dataset.mermaidRendered;
+    delete block.dataset.mermaidThemeMode;
     block.classList.remove("mermaid-block-rendered");
     block.replaceChildren(status, pre);
   }
 
   function showMermaidDeferred(block: HTMLElement) {
-    const status = block.querySelector<HTMLElement>(".mermaid-block-status");
-    if (status) status.textContent = "Waiting for complete Mermaid diagram...";
+    const source = block.dataset.mermaidSource ?? "";
+    replaceWithMermaidSource(block, source, "Waiting for complete Mermaid diagram...");
     block.classList.remove("mermaid-block-error", "mermaid-block-rendered");
   }
 
@@ -291,57 +226,133 @@
     replaceWithMermaidSource(block, source, `Could not render Mermaid diagram: ${errorText(error)}`);
   }
 
-  async function renderCodeBlocks() {
+  function createHighlightedPreElement(html: string, source: string, lang: string): HTMLPreElement | null {
+    const template = document.createElement("template");
+    template.innerHTML = html.trim();
+    const pre = template.content.firstElementChild;
+    if (!(pre instanceof HTMLPreElement)) return null;
+    pre.classList.add("markdown-code-block-rendered");
+    pre.dataset.codeSource = source;
+    pre.dataset.codeLang = lang;
+    return pre;
+  }
+
+  function enhanceInlineFileReferences() {
+    const root = markdownBody();
+    if (!root) return;
+    const nodes = root.querySelectorAll<HTMLElement>("code:not(pre code)");
+    for (const code of nodes) {
+      if (code.closest("a")) continue;
+      const text = code.textContent?.trim() ?? "";
+      const fileReference = parseInlineFileReference(text);
+      if (!fileReference) continue;
+      const anchor = document.createElement("a");
+      anchor.className = "markdown-file-ref";
+      anchor.href = "#";
+      anchor.dataset.filePath = fileReference.path;
+      anchor.dataset.fileLine = String(fileReference.lineNumber);
+      anchor.title = `Open ${fileReference.path} at line ${fileReference.lineNumber}`;
+      anchor.append(code.cloneNode(true));
+      code.replaceWith(anchor);
+    }
+  }
+
+  function replaceMermaidCodeBlocks(root: HTMLElement) {
+    const codeBlocks = root.querySelectorAll<HTMLElement>("pre > code");
+    for (const code of codeBlocks) {
+      const pre = code.parentElement;
+      if (!(pre instanceof HTMLPreElement)) continue;
+      if (pre.closest(".mermaid-block")) continue;
+      if (languageName(code.className) !== "mermaid") continue;
+      const source = code.textContent ?? "";
+      const block = document.createElement("div");
+      block.className = "mermaid-block";
+      block.dataset.mermaidSource = source;
+      replaceWithMermaidSource(block, source, "Rendering diagram...");
+      pre.replaceWith(block);
+    }
+  }
+
+  async function renderCodeBlocks(force = false) {
     const version = ++codeRenderVersion;
-    const sources = renderedMarkdown.codeBlocks;
-    if (sources.length === 0) return;
-    ensureThemeObserver();
     await tick();
 
-    const root = markdownBody;
-    if (version !== codeRenderVersion || !root) return;
-    const blocks = [...root.querySelectorAll<HTMLElement>(CODE_BLOCK_SELECTOR)];
-    for (const block of blocks) {
-      const index = Number(block.dataset.codeIndex);
-      const source = Number.isInteger(index) ? sources[index] : undefined;
-      if (!source) continue;
+    const root = markdownBody();
+    if (!root) return;
+
+    if (force) {
+      const highlightedBlocks = root.querySelectorAll<HTMLPreElement>(
+        "pre.markdown-code-block-rendered[data-code-source]",
+      );
+      for (const pre of highlightedBlocks) {
+        const source = pre.dataset.codeSource ?? pre.textContent ?? "";
+        const lang = pre.dataset.codeLang ?? "";
+        try {
+          const html = await highlightCodeHtml(source, lang);
+          if (version !== codeRenderVersion) return;
+          const replacement = createHighlightedPreElement(html, source, lang);
+          if (!replacement) continue;
+          pre.replaceWith(replacement);
+        } catch {
+          if (version !== codeRenderVersion) return;
+        }
+      }
+    }
+
+    const codeBlocks = root.querySelectorAll<HTMLElement>("pre > code");
+    for (const code of codeBlocks) {
+      const pre = code.parentElement;
+      if (!(pre instanceof HTMLPreElement)) continue;
+      if (pre.closest(".mermaid-block") || pre.classList.contains("markdown-code-block-rendered")) continue;
+      const lang = languageName(code.className);
+      if (lang === "mermaid") continue;
+      const source = code.textContent ?? "";
       try {
-        const html = await highlightCodeHtml(source.text, source.lang);
+        const html = await highlightCodeHtml(source, lang);
         if (version !== codeRenderVersion) return;
-        block.innerHTML = html;
-        block.classList.add("markdown-code-block-rendered");
+        const replacement = createHighlightedPreElement(html, source, lang);
+        if (!replacement) continue;
+        pre.replaceWith(replacement);
       } catch {
         if (version !== codeRenderVersion) return;
-        block.classList.add("markdown-code-block-error");
+        pre.classList.add("markdown-code-block-error");
       }
     }
   }
 
-  async function renderMermaidBlocks() {
+  async function renderMermaidBlocks(force = false) {
     const version = ++renderVersion;
-    const root = markdownBody;
-    const sources = renderedMarkdown.mermaidSources;
-    if (!root || sources.length === 0) return;
+    await tick();
+
+    const root = markdownBody();
+    if (!root) return;
+
+    replaceMermaidCodeBlocks(root);
+
+    const blocks = root.querySelectorAll<HTMLElement>(".mermaid-block[data-mermaid-source]");
+    if (blocks.length === 0) return;
 
     if (deferMermaidErrors) {
-      for (const block of root.querySelectorAll<HTMLElement>(MERMAID_SELECTOR)) {
-        showMermaidDeferred(block);
-      }
+      for (const block of blocks) showMermaidDeferred(block);
       return;
     }
 
-    ensureThemeObserver();
-    await tick();
-
     const mermaid = await loadMermaid();
-    if (version !== renderVersion || !markdownBody) return;
+    if (version !== renderVersion) return;
     configureMermaid(mermaid);
 
-    const blocks = [...markdownBody.querySelectorAll<HTMLElement>(MERMAID_SELECTOR)];
+    const themeMode = readThemeMode();
+    let index = 0;
     for (const block of blocks) {
-      const index = Number(block.dataset.mermaidIndex);
-      const source = Number.isInteger(index) ? sources[index] : undefined;
-      if (!source) continue;
+      const source = block.dataset.mermaidSource ?? "";
+      if (!source) {
+        index += 1;
+        continue;
+      }
+      if (!force && block.dataset.mermaidRendered === "true" && block.dataset.mermaidThemeMode === themeMode) {
+        index += 1;
+        continue;
+      }
       try {
         const result = await mermaid.render(`markdown-mermaid-${rendererId}-${version}-${index}`, source);
         if (version !== renderVersion) return;
@@ -349,6 +360,8 @@
         wrapMermaidDiagram(block);
         fitMermaidSvg(block);
         addMermaidZoomControls(block);
+        block.dataset.mermaidRendered = "true";
+        block.dataset.mermaidThemeMode = themeMode;
         block.classList.add("mermaid-block-rendered");
         block.classList.remove("mermaid-block-error");
         result.bindFunctions?.(block);
@@ -356,27 +369,25 @@
         if (version !== renderVersion) return;
         showMermaidError(block, source, error);
       }
+      index += 1;
     }
   }
 
-  function ensureThemeObserver() {
-    if (themeObserver) return;
-    const shell = document.querySelector(".app-shell");
-    if (!shell) return;
-    themeObserver = new MutationObserver(records => {
-      const current = renderedMarkdown;
-      const rerenderMermaid = records.some(r => r.attributeName === "data-theme-mode");
-      const rerenderCode = records.some(
-        r => r.attributeName === "data-dark-theme" || r.attributeName === "data-light-theme",
-      );
-      if ((rerenderMermaid || rerenderCode) && current.mermaidSources.length > 0)
-        void renderMermaidBlocks();
-      if (rerenderCode && current.codeBlocks.length > 0)
-        void renderCodeBlocks();
-    });
-    themeObserver.observe(shell, {
-      attributes: true,
-      attributeFilter: ["data-theme-mode", "data-dark-theme", "data-light-theme"],
+  function schedulePostProcess(options?: { forceCode?: boolean; forceMermaid?: boolean }) {
+    forceCodeRender ||= options?.forceCode ?? false;
+    forceMermaidRender ||= options?.forceMermaid ?? false;
+    if (postProcessScheduled) return;
+    postProcessScheduled = true;
+    queueMicrotask(async () => {
+      postProcessScheduled = false;
+      const shouldForceCode = forceCodeRender;
+      const shouldForceMermaid = forceMermaidRender;
+      forceCodeRender = false;
+      forceMermaidRender = false;
+      await tick();
+      enhanceInlineFileReferences();
+      await renderCodeBlocks(shouldForceCode);
+      await renderMermaidBlocks(shouldForceMermaid);
     });
   }
 
@@ -392,47 +403,66 @@
     onOpenFileReference({ path, lineNumber });
   }
 
-  let renderedMarkdown = $derived(renderMarkdown(content));
-
-  function tick(): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, 0));
-  }
-
   onMount(() => {
-    void renderMermaidBlocks();
-    void renderCodeBlocks();
+    schedulePostProcess();
+
+    if (container) {
+      contentObserver = new MutationObserver(() => {
+        schedulePostProcess();
+      });
+      contentObserver.observe(container, {
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    const shell = document.querySelector(".app-shell");
+    if (shell) {
+      themeObserver = new MutationObserver(records => {
+        const rerenderMermaid = records.some(r => r.attributeName === "data-theme-mode");
+        const rerenderCode = records.some(
+          r => r.attributeName === "data-dark-theme" || r.attributeName === "data-light-theme",
+        );
+        if (rerenderMermaid || rerenderCode) {
+          schedulePostProcess({
+            forceCode: rerenderCode,
+            forceMermaid: rerenderMermaid,
+          });
+        }
+      });
+      themeObserver.observe(shell, {
+        attributes: true,
+        attributeFilter: ["data-theme-mode", "data-dark-theme", "data-light-theme"],
+      });
+    }
+
     return () => {
-      renderVersion++;
-      codeRenderVersion++;
+      renderVersion += 1;
+      codeRenderVersion += 1;
       themeObserver?.disconnect();
+      contentObserver?.disconnect();
     };
   });
 
   $effect(() => {
-    void [renderedMarkdown, deferMermaidErrors];
-    void renderMermaidBlocks();
-    void renderCodeBlocks();
+    void [content, deferMermaidErrors];
+    schedulePostProcess();
   });
 </script>
 
-<!-- svelte-ignore element_in_head -->
-<div
-  bind:this={markdownBody}
-  class={`markdown-body ${className}`.trim()}
-  onclick={handleClick}
->
-  {@html renderedMarkdown.html}
+<div bind:this={container} onclick={handleClick}>
+  <Comark markdown={content} options={COMARK_OPTIONS} class={`markdown-body ${className}`.trim()} />
 </div>
 
 <style>
-  .markdown-body {
+  :global(.markdown-body) {
     font-size: 0.9rem;
     line-height: 1.7;
     color: var(--text);
     word-break: break-word;
   }
 
-  /* Markdown children are injected via {@html}, so descendant selectors must stay global. */
+  /* Markdown children are rendered by Comark, so descendant selectors must stay global. */
   :global(.markdown-body > *:first-child) {
     margin-top: 0;
   }
@@ -443,6 +473,7 @@
 
   :global(.markdown-body p) {
     margin: 0.4em 0;
+    white-space: pre-wrap;
   }
 
   :global(.markdown-body h1),
@@ -471,7 +502,11 @@
   :global(.markdown-body ul) { list-style: disc; }
   :global(.markdown-body ol) { list-style: decimal; }
 
-  :global(.markdown-body li) { margin: 0.2em 0; }
+  :global(.markdown-body li) {
+    margin: 0.2em 0;
+    white-space: pre-wrap;
+  }
+
   :global(.markdown-body li > p) { margin: 0.3em 0; }
 
   :global(.markdown-body blockquote) {
@@ -483,7 +518,10 @@
     border-radius: 0 6px 6px 0;
   }
 
-  :global(.markdown-body blockquote p) { margin: 0.2em 0; }
+  :global(.markdown-body blockquote p) {
+    margin: 0.2em 0;
+    white-space: pre-wrap;
+  }
 
   :global(.markdown-body code) {
     font-family: var(--pi-font-mono);
@@ -518,7 +556,9 @@
   }
 
   :global(.markdown-body a.markdown-file-ref:focus-visible) {
-    outline: none;
+    outline: 2px solid color-mix(in srgb, var(--focus-ring) 72%, transparent);
+    outline-offset: 2px;
+    border-radius: 6px;
   }
 
   :global(.markdown-body pre) {
@@ -666,6 +706,11 @@
   :global(.markdown-body img) {
     max-width: 100%;
     border-radius: 6px;
+  }
+
+  :global(.markdown-body input[type="checkbox"]) {
+    margin-right: 0.5em;
+    pointer-events: none;
   }
 
   :global(.markdown-body strong) { font-weight: 600; color: var(--text); }
