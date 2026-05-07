@@ -39,6 +39,7 @@ const LANGUAGE_LOADERS = {
   vue: () => import("shiki/dist/langs/vue.mjs"),
   xml: () => import("shiki/dist/langs/xml.mjs"),
   yaml: () => import("shiki/dist/langs/yaml.mjs"),
+  svelte: () => import("shiki/dist/langs/svelte.mjs")
 } as const;
 
 const createReadHighlighter = createBundledHighlighter({
@@ -65,6 +66,7 @@ const LANGUAGE_ALIASES: Record<string, SupportedLanguage | "text"> = {
   sass: "css",
   less: "css",
   vue: "vue",
+  svelte: "svelte",
   md: "markdown",
   mdx: "markdown",
   yml: "yaml",
