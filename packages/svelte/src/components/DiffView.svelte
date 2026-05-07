@@ -1,5 +1,9 @@
 <script lang="ts">
-  import { processFile, registerCustomTheme } from "@pierre/diffs";
+  import {
+    processFile,
+    registerCustomTheme,
+    type FileDiffMetadata,
+  } from "@pierre/diffs";
   import { preloadFileDiff } from "@pierre/diffs/ssr";
   import { onMount } from "svelte";
   import {
@@ -143,12 +147,8 @@
   }
 
   function hasRenderableDiff(
-    fileDiff:
-      | {
-          hunks?: unknown[];
-        }
-      | undefined,
-  ) {
+    fileDiff: FileDiffMetadata | undefined,
+  ): fileDiff is FileDiffMetadata {
     return Array.isArray(fileDiff?.hunks) && fileDiff.hunks.length > 0;
   }
 
@@ -246,7 +246,7 @@
     return lines.join("\n");
   }
 
-  function parseDiffText(patchText: string) {
+  function parseDiffText(patchText: string): FileDiffMetadata {
     const candidates: string[] = [];
     if (looksLikePatch(patchText)) {
       candidates.push(patchText);
