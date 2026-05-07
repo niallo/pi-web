@@ -2401,15 +2401,19 @@ function extractMessageImages(message: {
   });
 }
 
-function toRpcQueuedMessage(message: {
-  content?: unknown;
-  text?: string;
-  timestamp?: unknown;
-}): RpcQueuedMessage {
+function toRpcQueuedMessage(
+  message: {
+    content?: unknown;
+    text?: string;
+    timestamp?: unknown;
+  },
+  queueType: "steering" | "followUp",
+): RpcQueuedMessage {
   return {
     text: extractMessageText(message),
     images: extractMessageImages(message),
     timestamp: queuedMessageTimestamp(message.timestamp),
+    queueType,
   };
 }
 
@@ -2427,6 +2431,65 @@ function queuedAgentMessages(
   return Array.isArray(queue?.messages) ? queue.messages : [];
 }
 
+function trackedQueuedMessages(
+  session: AgentSession,
+  queueName: "_steeringMessages" | "_followUpMessages",
+): string[] {
+  const sessionWithQueue = session as unknown as
+    | {
+        _steeringMessages?: string[];
+        _followUpMessages?: string[];
+      }
+    | undefined;
+  const queue = sessionWithQueue?.[queueName];
+  return Array.isArray(queue) ? [...queue] : [];
+}
+
+function buildTrackedQueuedMessages(
+  session: AgentSession,
+  queueName: "steeringQueue" | "followUpQueue",
+  trackedQueueName: "_steeringMessages" | "_followUpMessages",
+  queueType: "steering" | "followUp",
+): RpcQueuedMessage[] {
+  const queued = queuedAgentMessages(session, queueName);
+  const tracked = trackedQueuedMessages(session, trackedQueueName);
+  const messages = tracked.map((text, index) => {
+    const queuedMessage = queued[index] as
+      | {
+          content?: unknown;
+          text?: string;
+          timestamp?: unknown;
+        }
+      | undefined;
+
+    if (queuedMessage && extractMessageText(queuedMessage) === text) {
+      return toRpcQueuedMessage(queuedMessage, queueType);
+    }
+
+    return {
+      text,
+      images: [],
+      timestamp: Date.now(),
+      queueType,
+    };
+  });
+
+  for (let index = tracked.length; index < queued.length; index += 1) {
+    messages.push(
+      toRpcQueuedMessage(
+        queued[index] as {
+          content?: unknown;
+          text?: string;
+          timestamp?: unknown;
+        },
+        queueType,
+      ),
+    );
+  }
+
+  return messages;
+}
+
 function buildQueueUpdateEvent(
   session: AgentSession,
   sessionPath: string | null,
@@ -2434,25 +2497,59 @@ function buildQueueUpdateEvent(
   return {
     type: "queue_update",
     sessionPath: sessionPath ?? undefined,
-    steering: queuedAgentMessages(session, "steeringQueue").map(message =>
-      toRpcQueuedMessage(
-        message as {
-          content?: unknown;
-          text?: string;
-          timestamp?: unknown;
-        },
-      ),
+    steering: buildTrackedQueuedMessages(
+      session,
+      "steeringQueue",
+      "_steeringMessages",
+      "steering",
     ),
-    followUp: queuedAgentMessages(session, "followUpQueue").map(message =>
-      toRpcQueuedMessage(
-        message as {
-          content?: unknown;
-          text?: string;
-          timestamp?: unknown;
-        },
-      ),
+    followUp: buildTrackedQueuedMessages(
+      session,
+      "followUpQueue",
+      "_followUpMessages",
+      "followUp",
     ),
   };
+}
+
+function clearSteeringQueue(session: AgentSession): void {
+  const followUpQueue = [...queuedAgentMessages(session, "followUpQueue")];
+  const followUpMessages = trackedQueuedMessages(session, "_followUpMessages");
+  const agent = session.agent as unknown as {
+    clearSteeringQueue?: () => void;
+    followUpQueue?: { messages?: unknown[] };
+  };
+  const sessionWithQueue = session as unknown as {
+    clearQueue?: () => { steering: string[]; followUp: string[] };
+    _steeringMessages?: string[];
+    _followUpMessages?: string[];
+    _emitQueueUpdate?: () => void;
+  };
+
+  if (typeof sessionWithQueue.clearQueue === "function") {
+    sessionWithQueue.clearQueue();
+
+    const restoredFollowUpQueue = agent.followUpQueue?.messages;
+    if (Array.isArray(restoredFollowUpQueue)) {
+      restoredFollowUpQueue.length = 0;
+      restoredFollowUpQueue.push(...followUpQueue);
+    }
+
+    if (Array.isArray(sessionWithQueue._followUpMessages)) {
+      sessionWithQueue._followUpMessages.length = 0;
+      sessionWithQueue._followUpMessages.push(...followUpMessages);
+    }
+
+    sessionWithQueue._emitQueueUpdate?.();
+    return;
+  }
+
+  agent.clearSteeringQueue?.();
+  if (Array.isArray(sessionWithQueue._steeringMessages)) {
+    sessionWithQueue._steeringMessages.length = 0;
+  }
+
+  sessionWithQueue._emitQueueUpdate?.();
 }
 
 function dequeueFollowUpMessage(
@@ -2487,6 +2584,7 @@ function dequeueFollowUpMessage(
       text?: string;
       timestamp?: unknown;
     },
+    "followUp",
   );
 }
 
@@ -4134,6 +4232,7 @@ export class WsRpcAdapter {
       case "abort": {
         if (this.sessionRuntime.hasDetachedSelection()) {
           const session = await this.sessionRuntime.ensureDetachedSession();
+          clearSteeringQueue(session);
           await session.abort();
         } else {
           ctx.abort();

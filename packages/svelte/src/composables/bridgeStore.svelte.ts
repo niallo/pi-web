@@ -167,6 +167,7 @@ function normalizeQueuedMessage(value: unknown): RpcQueuedMessage | null {
       typeof data.timestamp === "number" && Number.isFinite(data.timestamp)
         ? data.timestamp
         : Date.now(),
+    queueType: data.queueType === "steering" ? "steering" : "followUp",
   };
 }
 
@@ -528,18 +529,38 @@ function shouldApplyQueueUpdate(sessionPath: string | null): boolean {
 }
 
 function applyQueuedMessages(
+  steering: readonly RpcQueuedMessage[],
   followUp: readonly RpcQueuedMessage[],
-  options?: { sessionPath?: string | null; steeringCount?: number },
+  options?: { sessionPath?: string | null },
 ) {
   const sp = options?.sessionPath ?? getDisplayedSessionPath();
   if (!shouldApplyQueueUpdate(sp)) return;
 
-  _queuedUserMessages = [...followUp];
+  _queuedUserMessages = [...steering, ...followUp];
   if (_sessionState) {
-    const sc = options?.steeringCount ?? 0;
     _sessionState = {
       ..._sessionState,
-      pendingMessageCount: sc + followUp.length,
+      pendingMessageCount: steering.length + followUp.length,
+    };
+  }
+}
+
+function clearQueuedSteeringMessages(options?: {
+  sessionPath?: string | null;
+}) {
+  const sp = options?.sessionPath ?? getDisplayedSessionPath();
+  if (!shouldApplyQueueUpdate(sp)) return;
+
+  const nextQueuedMessages = _queuedUserMessages.filter(
+    message => message.queueType !== "steering",
+  );
+  if (nextQueuedMessages.length === _queuedUserMessages.length) return;
+
+  _queuedUserMessages = nextQueuedMessages;
+  if (_sessionState) {
+    _sessionState = {
+      ..._sessionState,
+      pendingMessageCount: nextQueuedMessages.length,
     };
   }
 }
@@ -975,10 +996,15 @@ function sendPrompt(
   images?: RpcImageContent[],
   streamingBehavior: "steer" | "followUp" = "followUp",
 ) {
-  if (streamingBehavior === "followUp" && _isStreaming) {
+  if (_isStreaming) {
     _queuedUserMessages = [
       ..._queuedUserMessages,
-      { text: message, images: images ?? [], timestamp: Date.now() },
+      {
+        text: message,
+        images: images ?? [],
+        timestamp: Date.now(),
+        queueType: streamingBehavior === "steer" ? "steering" : "followUp",
+      },
     ];
   }
   sendEnvelope({
@@ -992,10 +1018,19 @@ async function dequeueQueuedMessage(
 ): Promise<RpcQueuedMessage | null> {
   if (!Number.isInteger(idx) || idx < 0) return null;
 
+  const queuedMessage = _queuedUserMessages[idx];
+  if (!queuedMessage || queuedMessage.queueType === "steering") {
+    return null;
+  }
+
+  const followUpIndex = _queuedUserMessages
+    .slice(0, idx)
+    .filter(message => message.queueType !== "steering").length;
+
   try {
     const resp = await sendCommand({
       type: "dequeue_follow_up_message",
-      index: idx,
+      index: followUpIndex,
     });
     if (!resp.success) {
       pushNotification(
@@ -1251,9 +1286,14 @@ export async function createGitBranch(
   }
 }
 
-export function abortGeneration() {
-  if (!_isStreaming) return Promise.resolve(null);
-  return sendCommand({ type: "abort" });
+export async function abortGeneration() {
+  if (!_isStreaming) return null;
+
+  const response = await sendCommand({ type: "abort" });
+  if (response.success) {
+    clearQueuedSteeringMessages();
+  }
+  return response;
 }
 
 export async function loadWorkspaceSessions(options: {
@@ -1627,9 +1667,8 @@ function handleEvent(payload: RpcBridgeEvent) {
             .map(m => normalizeQueuedMessage(m))
             .filter((m): m is RpcQueuedMessage => m !== null)
         : [];
-      applyQueuedMessages(followUp, {
+      applyQueuedMessages(steering, followUp, {
         sessionPath: data.sessionPath ?? null,
-        steeringCount: steering.length,
       });
       break;
     }

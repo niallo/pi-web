@@ -21,6 +21,7 @@ export interface RpcQueuedMessage {
   text: string;
   images: RpcImageContent[];
   timestamp: number;
+  queueType?: "steering" | "followUp";
 }
 
 export interface RpcWorkspaceEntry {

@@ -4220,6 +4220,7 @@ describe("WsRpcAdapter", () => {
           text: "Queued first",
           images: [],
           timestamp: 1,
+          queueType: "followUp",
         },
       ]);
       expect(response?.payload).toMatchObject({
@@ -4235,6 +4236,7 @@ describe("WsRpcAdapter", () => {
               },
             ],
             timestamp: 2,
+            queueType: "followUp",
           },
         },
       });

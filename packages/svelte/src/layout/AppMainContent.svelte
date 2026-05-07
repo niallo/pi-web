@@ -190,30 +190,34 @@
 
   {#if queuedUserMessages.length > 0}
     <div class="queued-messages-strip">
-      {#each queuedUserMessages as queued, qIdx (`${queued.timestamp}:${qIdx}`)}
+      {#each queuedUserMessages as queued, qIdx (`${queued.queueType ?? "followUp"}:${queued.timestamp}:${qIdx}`)}
         <div class="queued-message-card">
           <div class="queued-message-body">
-            <span class="queued-badge">Queued</span>
+            <span class="queued-badge">
+              {queued.queueType === "steering" ? "Steering" : "Queued"}
+            </span>
             <span class="queued-text">{queued.text}</span>
           </div>
-          <div class="queued-message-actions">
-            <button
-              type="button"
-              class="queued-action-btn edit"
-              title="Edit"
-              onclick={() => onEditQueued(qIdx)}
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              class="queued-action-btn cancel"
-              title="Cancel"
-              onclick={() => onCancelQueued(qIdx)}
-            >
-              Cancel
-            </button>
-          </div>
+          {#if queued.queueType !== "steering"}
+            <div class="queued-message-actions">
+              <button
+                type="button"
+                class="queued-action-btn edit"
+                title="Edit"
+                onclick={() => onEditQueued(qIdx)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                class="queued-action-btn cancel"
+                title="Cancel"
+                onclick={() => onCancelQueued(qIdx)}
+              >
+                Cancel
+              </button>
+            </div>
+          {/if}
         </div>
       {/each}
     </div>
