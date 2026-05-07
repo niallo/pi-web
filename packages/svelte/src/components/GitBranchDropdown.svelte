@@ -2,7 +2,6 @@
   import type { RpcGitBranch, RpcGitRepoState } from "@pi-web/bridge/types";
   import Check from "lucide-svelte/icons/check";
   import GitBranchIcon from "lucide-svelte/icons/git-branch";
-  import LoaderCircle from "lucide-svelte/icons/loader-circle";
   import Plus from "lucide-svelte/icons/plus";
   import RefreshCw from "lucide-svelte/icons/refresh-cw";
 
@@ -293,13 +292,6 @@
     >
       <GitBranchIcon class="git-trigger-icon" aria-hidden="true" size={12} />
       <span class="git-trigger-text">{displayLabel}</span>
-      {#if isBusy}
-        <LoaderCircle
-          class="git-trigger-spinner spin"
-          aria-hidden="true"
-          size={12}
-        />
-      {/if}
     </button>
 
     {#if isOpen}
@@ -436,8 +428,7 @@
     opacity: 0.72;
   }
 
-  .git-trigger-icon,
-  .git-trigger-spinner {
+  .git-trigger-icon {
     width: 12px;
     height: 12px;
     flex-shrink: 0;
@@ -473,7 +464,7 @@
 
   .git-search-row {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 7px;
     margin-bottom: 6px;
   }
@@ -482,10 +473,11 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    align-self: stretch;
     width: 34px;
-    height: 34px;
+    padding: 0;
     border-radius: 10px;
-    border: 1px solid var(--border);
+    border: none;
     background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
     color: var(--text-subtle);
     cursor: pointer;
@@ -493,13 +485,11 @@
   }
 
   .git-refresh:hover:not(:disabled) {
-    border-color: var(--border-strong);
     background: var(--surface-hover);
     color: var(--text);
   }
 
   .git-refresh:focus-visible {
-    border-color: var(--accent);
     background: var(--surface-hover);
     color: var(--text);
     outline: none;
@@ -524,9 +514,7 @@
   }
 
   .git-search:focus-within {
-    border-color: var(--accent);
     background: var(--panel);
-    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .git-search-input {
@@ -541,6 +529,13 @@
 
   .git-search-input::placeholder {
     color: var(--text-subtle);
+  }
+
+  .git-refresh-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
   }
 
   .git-create,
