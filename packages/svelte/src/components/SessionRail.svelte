@@ -579,7 +579,7 @@
   .session-rail {
     display: flex;
     flex-direction: column;
-    padding: 0px 10px 0;
+    padding: 0px 4px 0;
     overflow: hidden;
     position: relative;
   }
@@ -589,7 +589,8 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding: 6px 10px 4px;
+    min-height: 44px;
+    padding: 6px 4px 10px 8px;
     color: var(--text-subtle);
     flex-shrink: 0;
   }
