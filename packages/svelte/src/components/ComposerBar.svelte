@@ -12,35 +12,15 @@
   import Square from "lucide-svelte/icons/square";
   import X from "lucide-svelte/icons/x";
   import type { ConnectionStatus } from "../composables/bridgeStore.svelte";
-  import {
-    COMPOSER_ATTACHMENT_ACCEPT,
-    createComposerAttachments,
-    extractSupportedImageFiles,
-    formatAttachmentSize,
-    toRpcImageContent,
-    type ComposerAttachment,
-  } from "../utils/attachments";
+  import { COMPOSER_ATTACHMENT_ACCEPT, formatAttachmentSize } from "../utils/attachments";
   import type { RpcModelInfo } from "../utils/models";
-  import {
-    applySlashCommandCompletion,
-    getSlashCommandContext,
-    mergeSlashCommandOptions,
-    parseCompactSlashCommand,
-  } from "../utils/slashCommands";
-  import { getNextThinkingLevel } from "../utils/thinkingLevels";
-  import {
-    applyWorkspaceMentionCompletion,
-    getWorkspaceMentionContext,
-    getWorkspaceMentionSuggestions,
-    type WorkspaceMentionSuggestion,
-  } from "../utils/workspaceMentions";
-  import type { ImageContentBlock } from "../utils/transcript";
   import CommandPalette from "./CommandPalette.svelte";
   import GitBranchDropdown from "./GitBranchDropdown.svelte";
   import ImageLightbox from "./ImageLightbox.svelte";
   import ModelDropdown from "./ModelDropdown.svelte";
   import ThinkingLevelDropdown from "./ThinkingLevelDropdown.svelte";
   import WorkspaceMentionPalette from "./WorkspaceMentionPalette.svelte";
+  import { createComposerBarState } from "./composerBarState.svelte";
 
   let {
     connectionStatus = "disconnected" as ConnectionStatus,
@@ -49,31 +29,16 @@
     workspaceEntries = [] as readonly RpcWorkspaceEntry[],
     workspaceEntriesLoading = false,
     workspaceContextKey = null as string | null,
-    ensureWorkspaceEntries = (_?: boolean) =>
-      Promise.resolve([] as RpcWorkspaceEntry[]),
+    ensureWorkspaceEntries = (_?: boolean) => Promise.resolve([] as RpcWorkspaceEntry[]),
     models = [] as readonly RpcModelInfo[],
     selectedModel = null as RpcModelInfo | null,
     thinkingLevel = null as RpcThinkingLevel | null,
     autoCompactionEnabled = false,
     prefillText = null as string | null,
-    revision = null as {
-      entryId: string;
-      text: string;
-      preview: string;
-      hasImages: boolean;
-      images: RpcImageContent[];
-    } | null,
+    revision = null as { entryId: string; text: string; preview: string; hasImages: boolean; images: RpcImageContent[] } | null,
     pendingMessageCount = 0,
-    editQueuedPayload = null as {
-      text: string;
-      images: RpcImageContent[];
-    } | null,
-    onSubmit = (_: {
-      message: string;
-      images: RpcImageContent[];
-      revisionEntryId?: string;
-      steer?: boolean;
-    }) => {},
+    editQueuedPayload = null as { text: string; images: RpcImageContent[] } | null,
+    onSubmit = (_: { message: string; images: RpcImageContent[]; revisionEntryId?: string; steer?: boolean }) => {},
     onAbort = () => {},
     onCancelRevision = () => {},
     onSelectModel = (_: RpcModelInfo) => {},
@@ -84,585 +49,174 @@
     gitRepoLoading = false,
     gitBranchSwitching = false,
     gitActionsDisabled = false,
-    refreshGitRepoState = (_?: boolean) =>
-      Promise.resolve(null as RpcGitRepoState | null),
-    switchGitBranch = (_: string) =>
-      Promise.resolve(null as RpcGitRepoState | null),
-    createGitBranch = (_: string) =>
-      Promise.resolve(null as RpcGitRepoState | null),
+    refreshGitRepoState = (_?: boolean) => Promise.resolve(null as RpcGitRepoState | null),
+    switchGitBranch = (_: string) => Promise.resolve(null as RpcGitRepoState | null),
+    createGitBranch = (_: string) => Promise.resolve(null as RpcGitRepoState | null),
   } = $props();
 
-  const MAX_TEXTAREA_HEIGHT = 160;
-  const TEXTAREA_HEIGHT_BUFFER = 4;
-
-  let inputText = $state("");
+  // ---- DOM refs (must stay in .svelte for bind:this) ----
   let composerRootRef = $state<HTMLDivElement | null>(null);
   let textareaRef = $state<HTMLTextAreaElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
-  let isDisabled = $derived(connectionStatus !== "connected");
   let commandPaletteRef = $state<CommandPalette | null>(null);
   let mentionPaletteRef = $state<WorkspaceMentionPalette | null>(null);
-  let attachments = $state<ComposerAttachment[]>([]);
-  let isDragActive = $state(false);
-  let attachmentNotice = $state<string | null>(null);
+
+  // ---- reactive primitives owned by the component (needed for bind:) ----
+  let inputText = $state("");
   let cursorOffset = $state(0);
-  let dismissedCommandKey = $state<string | null>(null);
-  let dismissedMentionKey = $state<string | null>(null);
-  let isComposing = $state(false);
-  let mentionInteractionWorkspaceKey = $state<string | null>(null);
 
-  let commandContext = $derived(
-    getSlashCommandContext(inputText, cursorOffset),
+  // ---- state module (reads/writes inputText & cursorOffset through $rx) ----
+  const composer = createComposerBarState(
+    {
+      get connectionStatus() { return connectionStatus; },
+      get isStreaming() { return isStreaming; },
+      get commands() { return commands; },
+      get workspaceEntries() { return workspaceEntries; },
+      get workspaceEntriesLoading() { return workspaceEntriesLoading; },
+      get workspaceContextKey() { return workspaceContextKey; },
+      get ensureWorkspaceEntries() { return ensureWorkspaceEntries; },
+      get models() { return models; },
+      get selectedModel() { return selectedModel; },
+      get thinkingLevel() { return thinkingLevel; },
+      get autoCompactionEnabled() { return autoCompactionEnabled; },
+      get prefillText() { return prefillText; },
+      get revision() { return revision; },
+      get pendingMessageCount() { return pendingMessageCount; },
+      get editQueuedPayload() { return editQueuedPayload; },
+    },
+    {
+      get onSubmit() { return onSubmit; },
+      get onAbort() { return onAbort; },
+      get onCancelRevision() { return onCancelRevision; },
+      get onSelectModel() { return onSelectModel; },
+      get onSelectThinkingLevel() { return onSelectThinkingLevel; },
+      get onToggleAutoCompaction() { return onToggleAutoCompaction; },
+    },
+    {
+      get inputText() { return inputText; },
+      set inputText(v: string) { inputText = v; },
+      get cursorOffset() { return cursorOffset; },
+      set cursorOffset(v: number) { cursorOffset = v; },
+    },
   );
-  let availableSlashCommands = $derived(mergeSlashCommandOptions([]));
-  let filteredSlashCommands = $derived.by(() => {
-    if (!commandContext) return [];
-    const query = commandContext.query.toLowerCase();
-    if (!query) return availableSlashCommands;
-    return availableSlashCommands.filter(
-      c =>
-        c.name.toLowerCase().includes(query) ||
-        (c.description ?? "").toLowerCase().includes(query),
-    );
-  });
-  let mentionContext = $derived(
-    getWorkspaceMentionContext(inputText, cursorOffset),
-  );
-  let mentionSuggestions = $derived.by(() => {
-    if (!mentionContext) return [];
-    return getWorkspaceMentionSuggestions(workspaceEntries, mentionContext);
-  });
-  let showCommandPalette = $derived.by(() => {
-    if (isDisabled || !commandContext) return false;
-    return dismissedCommandKey !== getCommandKey(commandContext);
-  });
-  let showMentionPalette = $derived.by(() => {
-    if (showCommandPalette || !mentionContext) return false;
-    if (dismissedMentionKey === getMentionKey(mentionContext)) return false;
-    if (workspaceEntriesLoading) return true;
-    return true;
-  });
-  let currentModelText = $derived.by(() => {
-    if (!selectedModel) return models.length > 0 ? "choose model" : "no models";
-    return selectedModel.name ?? selectedModel.id;
-  });
-  let normalizedInputText = $derived(normalizeSubmittedText(inputText));
-  let hasAttachments = $derived(attachments.length > 0);
-  let canSubmit = $derived(
-    !isDisabled && (normalizedInputText.length > 0 || hasAttachments),
-  );
-  let canAbort = $derived(!isDisabled && isStreaming);
-  let showStopButton = $derived(isStreaming && !canSubmit);
-  let hasPendingMessages = $derived(pendingMessageCount > 0);
-  let attachmentSummary = $derived(attachmentNotice ?? "");
-  let lightboxAttachmentIndex = $state(-1);
-  let lightboxImages = $derived.by(() => {
-    return attachments.map<ImageContentBlock>(attachment => ({
-      kind: "image",
-      src: attachment.previewUrl,
-      alt: attachment.name,
-      mimeType: attachment.mimeType,
-    }));
-  });
-  let lightboxOpen = $derived(lightboxAttachmentIndex >= 0 && lightboxAttachmentIndex < attachments.length);
 
-  let revisionBackup = $state<{
-    text: string;
-    attachments: ComposerAttachment[];
-  } | null>(null);
-
-  let attachmentNoticeTimer: ReturnType<typeof setTimeout> | null = null;
-  let dragDepth = 0;
-
-  function restoredAttachmentExtension(mimeType: string): string {
-    switch (mimeType) {
-      case "image/png": return "png";
-      case "image/jpeg": return "jpg";
-      case "image/gif": return "gif";
-      case "image/webp": return "webp";
-      default: return "img";
-    }
-  }
-
-  function restoredAttachmentSize(base64Data: string): number {
-    const n = base64Data.replace(/\s+/g, "");
-    if (!n) return 0;
-    const p = n.endsWith("==") ? 2 : n.endsWith("=") ? 1 : 0;
-    return Math.max(0, Math.floor((n.length * 3) / 4) - p);
-  }
-
-  function restoredAttachmentId(index: number): string {
-    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-    return `restored_attachment_${Date.now().toString(36)}_${index.toString(36)}_${Math.random().toString(36).slice(2)}`;
-  }
-
-  function attachmentsFromRpcImages(
-    images: readonly RpcImageContent[] | undefined,
-  ): ComposerAttachment[] {
-    if (!images?.length) return [];
-    return images.map((image, idx) => {
-      const ext = restoredAttachmentExtension(image.mimeType);
-      return {
-        id: restoredAttachmentId(idx),
-        type: "image",
-        data: image.data,
-        mimeType: image.mimeType,
-        name: `image-${idx + 1}.${ext}`,
-        size: restoredAttachmentSize(image.data),
-        previewUrl: `data:${image.mimeType};base64,${image.data}`,
-      };
-    });
-  }
-
-  function normalizeSubmittedText(value: string): string {
-    const normalized = value.replace(/\r\n/g, "\n");
-    const lines = normalized.split("\n");
-    while (lines.length > 0 && lines[0].trim() === "") lines.shift();
-    while (lines.length > 0 && lines[lines.length - 1].trim() === "") lines.pop();
-    if (lines.length === 0) return "";
-    lines[0] = lines[0].trimStart();
-    lines[lines.length - 1] = lines[lines.length - 1].trimEnd();
-    return lines.join("\n");
-  }
-
-  function getCommandKey(ctx: ReturnType<typeof getSlashCommandContext> | null): string | null {
-    if (!ctx) return null;
-    return `${ctx.start}:${ctx.query}`;
-  }
-
-  function getMentionKey(ctx: ReturnType<typeof getWorkspaceMentionContext> | null): string | null {
-    if (!ctx) return null;
-    return `${ctx.start}:${ctx.prefix}`;
-  }
-
-  function syncCursorFromTextarea() {
-    cursorOffset = textareaRef?.selectionStart ?? inputText.length;
-  }
-
-  function resizeTextarea() {
-    queueMicrotask(() => {
-      const el = textareaRef;
-      if (!el) return;
-      el.style.height = "auto";
-      const styles = window.getComputedStyle(el);
-      const lineHeight = Number.parseFloat(styles.lineHeight) || 0;
-      const pt = Number.parseFloat(styles.paddingTop) || 0;
-      const pb = Number.parseFloat(styles.paddingBottom) || 0;
-      const minHeight = Math.ceil(lineHeight + pt + pb + TEXTAREA_HEIGHT_BUFFER);
-      const nextHeight = Math.min(
-        Math.max(el.scrollHeight + TEXTAREA_HEIGHT_BUFFER, minHeight),
-        MAX_TEXTAREA_HEIGHT,
-      );
-      el.style.height = `${nextHeight}px`;
-      el.style.overflowY = el.scrollHeight > MAX_TEXTAREA_HEIGHT ? "auto" : "hidden";
-    });
-  }
-
-  function shouldRevealComposer(): boolean {
-    if (typeof window === "undefined") return false;
-    const el = composerRootRef;
-    if (!el) return false;
-    const rect = el.getBoundingClientRect();
-    const vh = window.innerHeight || 0;
-    const margin = 24;
-    return rect.top < margin || rect.bottom > vh - margin;
-  }
-
-  function focusComposer(options?: { reveal?: boolean }) {
-    queueMicrotask(() => {
-      if (options?.reveal && shouldRevealComposer()) {
-        composerRootRef?.scrollIntoView({ behavior: "smooth", block: "end" });
-      }
-      const el = textareaRef;
-      if (!el) return;
-      el.focus();
-      const cursor = inputText.length;
-      el.setSelectionRange(cursor, cursor);
-      cursorOffset = cursor;
-      resizeTextarea();
-    });
-  }
-
-  function applyExternalText(text: string, options?: { clearAttachments?: boolean }) {
-    inputText = text;
-    if (options?.clearAttachments) clearAttachments();
-    clearAttachmentNotice();
-    dismissedCommandKey = null;
-    dismissedMentionKey = null;
-    focusComposer({ reveal: true });
-  }
-
-  function clearAttachmentNotice() {
-    if (attachmentNoticeTimer) { clearTimeout(attachmentNoticeTimer); attachmentNoticeTimer = null; }
-    attachmentNotice = null;
-  }
-
-  function setAttachmentNotice(message: string | null) {
-    clearAttachmentNotice();
-    attachmentNotice = message;
-    if (!message) return;
-    attachmentNoticeTimer = setTimeout(() => {
-      attachmentNotice = null;
-      attachmentNoticeTimer = null;
-    }, 4000);
-  }
-
-  async function addAttachmentsFromFiles(files: Iterable<File> | ArrayLike<File> | null | undefined) {
-    if (!files) return;
-    const incomingFiles = Array.from(files);
-    if (!incomingFiles.length) return;
-    const { attachments: nextAttachments, rejectedNames } = await createComposerAttachments(incomingFiles);
-    if (nextAttachments.length > 0) {
-      attachments = [...attachments, ...nextAttachments];
-      setAttachmentNotice(null);
-    }
-    if (rejectedNames.length > 0) {
-      setAttachmentNotice(`Skipped unsupported files: ${rejectedNames.join(", ")}`);
-    }
-  }
-
-  function openAttachmentLightbox(index: number) {
-    if (index < 0 || index >= attachments.length) return;
-    lightboxAttachmentIndex = index;
-  }
-
-  function closeAttachmentLightbox() {
-    lightboxAttachmentIndex = -1;
-  }
-
-  function showPreviousAttachmentLightboxImage() {
-    if (attachments.length <= 1 || lightboxAttachmentIndex < 0) return;
-    lightboxAttachmentIndex = (lightboxAttachmentIndex + attachments.length - 1) % attachments.length;
-  }
-
-  function showNextAttachmentLightboxImage() {
-    if (attachments.length <= 1 || lightboxAttachmentIndex < 0) return;
-    lightboxAttachmentIndex = (lightboxAttachmentIndex + 1) % attachments.length;
-  }
-
-  function removeAttachment(id: string) {
-    const index = attachments.findIndex(a => a.id === id);
-    if (index === -1) return;
-    const nextAttachments = attachments.filter(a => a.id !== id);
-    if (lightboxAttachmentIndex === index) {
-      lightboxAttachmentIndex = nextAttachments.length > 0
-        ? Math.min(index, nextAttachments.length - 1)
-        : -1;
-    } else if (lightboxAttachmentIndex > index) {
-      lightboxAttachmentIndex -= 1;
-    }
-    attachments = nextAttachments;
-    if (attachments.length === 0) clearAttachmentNotice();
-  }
-
-  function clearAttachments() {
-    attachments = [];
-    lightboxAttachmentIndex = -1;
-    if (fileInputRef) fileInputRef.value = "";
-  }
-
-  function submitMessage(message: string, steer: boolean = false) {
-    onSubmit({
-      message,
-      images: toRpcImageContent(attachments),
-      revisionEntryId: revision?.entryId,
-      steer,
-    });
-    inputText = "";
-    cursorOffset = 0;
-    dismissedCommandKey = null;
-    dismissedMentionKey = null;
-    revisionBackup = null;
-    clearAttachments();
-    clearAttachmentNotice();
-    resizeTextarea();
-  }
-
-  function handleSubmit(steer: boolean = false) {
-    const text = normalizedInputText;
-    if ((!text && !hasAttachments) || isDisabled) return;
-    if (parseCompactSlashCommand(text) && hasAttachments) {
-      setAttachmentNotice("/compact does not accept image attachments");
-      return;
-    }
-    submitMessage(text, steer);
-  }
-
-  function handleAbortAction() {
-    if (!canAbort) return;
-    onAbort();
-  }
-
-  function handlePrimaryAction() {
-    if (showStopButton) { handleAbortAction(); return; }
-    handleSubmit();
-  }
-
-  function handleCommandSelect(commandName: string) {
-    const cmd = availableSlashCommands.find(c => c.name === commandName);
-    const ctx = commandContext;
-    if (!cmd || !ctx) return;
-    const ns = applySlashCommandCompletion(inputText, ctx, cmd);
-    inputText = ns.text;
-    dismissedCommandKey = null;
-    queueMicrotask(() => {
-      const el = textareaRef;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(ns.cursor, ns.cursor);
-      cursorOffset = ns.cursor;
-      resizeTextarea();
-    });
-  }
-
-  function handleCommandClose() {
-    dismissedCommandKey = getCommandKey(commandContext);
-  }
-
-  function handleMentionSelect(item: WorkspaceMentionSuggestion) {
-    const mention = mentionContext;
-    if (!mention) return;
-    const ns = applyWorkspaceMentionCompletion(inputText, cursorOffset, mention, item);
-    inputText = ns.text;
-    dismissedMentionKey = null;
-    queueMicrotask(() => {
-      const el = textareaRef;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(ns.cursor, ns.cursor);
-      cursorOffset = ns.cursor;
-      resizeTextarea();
-    });
-  }
-
-  function handleMentionClose() {
-    dismissedMentionKey = getMentionKey(mentionContext);
-  }
-
-  function handleCycleThinkingLevel() {
-    if (isDisabled) return;
-    onSelectThinkingLevel(getNextThinkingLevel(thinkingLevel));
-  }
-
-  function handleAutoCompactionToggle() {
-    if (isDisabled) return;
-    onToggleAutoCompaction(!autoCompactionEnabled);
-  }
-
-  function handleCancelRevision() {
-    const backup = revisionBackup;
-    inputText = backup?.text ?? "";
-    attachments = backup ? [...backup.attachments] : [];
-    if (fileInputRef) fileInputRef.value = "";
-    revisionBackup = null;
-    clearAttachmentNotice();
-    dismissedCommandKey = null;
-    dismissedMentionKey = null;
-    onCancelRevision();
-    focusComposer();
-  }
+  // ---- event handler glue (wires state methods to DOM refs) ----
 
   function handleFilePickerOpen() {
-    fileInputRef?.click();
-  }
-
-  function handleInputInteraction() {
-    syncCursorFromTextarea();
-    resizeTextarea();
+    composer.handleFilePickerOpen(fileInputRef);
   }
 
   async function handleFileInputChange(event: Event) {
-    const files = (event.target as HTMLInputElement | null)?.files;
-    await addAttachmentsFromFiles(files);
-    if (fileInputRef) fileInputRef.value = "";
+    await composer.handleFileInputChange(event, fileInputRef);
   }
 
-  function hasFilePayload(dataTransfer: DataTransfer | null): boolean {
-    return Array.from(dataTransfer?.types ?? []).includes("Files");
+  function handleInputInteraction() {
+    composer.handleInputInteraction(textareaRef);
   }
 
-  function extractPastedFiles(event: ClipboardEvent): File[] {
-    const directFiles = extractSupportedImageFiles(event.clipboardData?.files);
-    if (directFiles.length > 0) return directFiles;
-    const pastedFiles = Array.from(event.clipboardData?.items ?? [])
-      .filter(i => i.kind === "file")
-      .map(i => i.getAsFile())
-      .filter((f): f is File => f !== null);
-    return extractSupportedImageFiles(pastedFiles);
+  function handleInputCompositionStart() {
+    composer.handleInputCompositionStart();
+  }
+
+  function handleInputCompositionEnd() {
+    composer.handleInputCompositionEnd(textareaRef);
   }
 
   async function handleInputPaste(event: ClipboardEvent) {
-    const pastedFiles = extractPastedFiles(event);
-    if (pastedFiles.length === 0) return;
-    event.preventDefault();
-    await addAttachmentsFromFiles(pastedFiles);
+    await composer.handleInputPaste(event);
   }
-
-  function handleDragEnter(event: DragEvent) {
-    if (!hasFilePayload(event.dataTransfer)) return;
-    dragDepth += 1;
-    isDragActive = true;
-  }
-
-  function handleDragOver(event: DragEvent) {
-    if (!hasFilePayload(event.dataTransfer)) return;
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    isDragActive = true;
-  }
-
-  function handleDragLeave(event: DragEvent) {
-    if (!hasFilePayload(event.dataTransfer)) return;
-    dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0) isDragActive = false;
-  }
-
-  async function handleDrop(event: DragEvent) {
-    dragDepth = 0;
-    isDragActive = false;
-    await addAttachmentsFromFiles(event.dataTransfer?.files);
-  }
-
-  function isInputComposing(event: KeyboardEvent): boolean {
-    return event.isComposing || isComposing || event.keyCode === 229;
-  }
-
-  function handleInputCompositionStart() { isComposing = true; }
-  function handleInputCompositionEnd() { isComposing = false; handleInputInteraction(); }
 
   function handleInputKeydown(e: KeyboardEvent) {
-    const composing = isInputComposing(e);
-
-    if (e.key === "Tab" && e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !composing) {
-      e.preventDefault();
-      handleCycleThinkingLevel();
-      return;
-    }
-
-    if (
-      showCommandPalette && commandPaletteRef &&
-      (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Escape" ||
-        (filteredSlashCommands.length > 0 && !composing &&
-          ((!e.shiftKey && e.key === "Enter") || e.key === "Tab")))
-    ) {
-      commandPaletteRef.handleKeydown(e);
-      return;
-    }
-
-    if (
-      showMentionPalette && mentionPaletteRef &&
-      (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Escape" ||
-        ((workspaceEntriesLoading || mentionSuggestions.length > 0) && !composing &&
-          ((!e.shiftKey && e.key === "Enter") || e.key === "Tab")))
-    ) {
-      mentionPaletteRef.handleKeydown(e);
-      return;
-    }
-
-    if (e.key === "Escape" && isStreaming) {
-      e.preventDefault();
-      handleAbortAction();
-      return;
-    }
-
-    if (e.key === "Enter") {
-      if (composing || e.shiftKey) return;
-      e.preventDefault();
-      handleSubmit(isStreaming);
-    }
+    composer.handleInputKeydown(e, {
+      textareaEl: textareaRef,
+      commandPaletteEl: commandPaletteRef,
+      mentionPaletteEl: mentionPaletteRef,
+    }, isStreaming);
   }
 
-  // Effects
-  $effect(() => {
-    void inputText;
-    resizeTextarea();
-    queueMicrotask(() => syncCursorFromTextarea());
-  });
+  function handleCommandSelect(commandName: string) {
+    composer.handleCommandSelect(commandName, textareaRef);
+  }
 
-  $effect(() => {
-    const cmdKey = getCommandKey(commandContext);
-    if (cmdKey && cmdKey !== (dismissedCommandKey ?? undefined)) dismissedCommandKey = null;
-  });
+  function handleMentionSelect(item: Parameters<typeof composer.handleMentionSelect>[0]) {
+    composer.handleMentionSelect(item, textareaRef);
+  }
 
-  $effect(() => {
-    void [mentionContext, workspaceContextKey];
-    const mk = getMentionKey(mentionContext);
-    if (mk && mk !== (dismissedMentionKey ?? undefined)) dismissedMentionKey = null;
+  function handleCancelRevision() {
+    composer.handleCancelRevision(fileInputRef, textareaRef, composerRootRef);
+  }
 
-    if (!mentionContext) { mentionInteractionWorkspaceKey = null; return; }
-    const nik = `${workspaceContextKey ?? ""}:${mentionContext.start}`;
-    if (mentionInteractionWorkspaceKey === nik) return;
-    mentionInteractionWorkspaceKey = nik;
-    void ensureWorkspaceEntries();
-  });
-
-  $effect(() => {
-    if (typeof prefillText === "string") applyExternalText(prefillText);
-  });
-
-  let previousRevision: typeof revision = null;
-  $effect(() => {
-    void revision;
-    if (!revision) {
-      revisionBackup = null;
-      previousRevision = null;
+  function handlePrimaryAction() {
+    if (composer.showStopButton) {
+      composer.handleAbortAction();
       return;
     }
-    if (!previousRevision && !revisionBackup) {
-      revisionBackup = {
-        text: inputText,
-        attachments: [...attachments],
-      };
+    composer.handleSubmit(false, fileInputRef, textareaRef);
+  }
+
+  // ---- effects that need DOM refs ----
+
+  $effect(() => {
+    // Resize textarea on input change
+    void inputText;
+    composer.resizeTextarea(textareaRef);
+  });
+
+  $effect(() => {
+    if (typeof prefillText === "string") {
+      composer.applyExternalText(prefillText, {
+        fileInputEl: fileInputRef,
+        textareaEl: textareaRef,
+        rootEl: composerRootRef,
+      });
     }
-    applyExternalText(revision.text);
-    attachments = attachmentsFromRpcImages(revision.images);
-    if (fileInputRef) fileInputRef.value = "";
-    previousRevision = revision;
   });
 
   $effect(() => {
     void editQueuedPayload;
-    if (!editQueuedPayload) return;
-    inputText = editQueuedPayload.text;
-    attachments = attachmentsFromRpcImages(editQueuedPayload.images);
-    if (fileInputRef) fileInputRef.value = "";
-    clearAttachmentNotice();
-    dismissedCommandKey = null;
-    dismissedMentionKey = null;
-    revisionBackup = null;
-    focusComposer({ reveal: true });
+    if (editQueuedPayload) {
+      composer.focusComposer({
+        textareaEl: textareaRef,
+        rootEl: composerRootRef,
+        reveal: true,
+      });
+    }
   });
 
-  resizeTextarea();
+  // Initial resize
+  $effect(() => {
+    composer.resizeTextarea(textareaRef);
+  });
 </script>
 
 <div bind:this={composerRootRef} class="composer-bar">
   <div class="composer-inner-wrap">
-    {#if showCommandPalette}
+    {#if composer.showCommandPalette}
       <CommandPalette
         bind:this={commandPaletteRef}
-        commands={availableSlashCommands}
-        filter={commandContext?.query ?? ""}
+        commands={composer.availableSlashCommands}
+        filter={composer.commandContext?.query ?? ""}
         onSelect={handleCommandSelect}
-        onClose={handleCommandClose}
+        onClose={composer.handleCommandClose}
       />
-    {:else if showMentionPalette}
+    {:else if composer.showMentionPalette}
       <WorkspaceMentionPalette
         bind:this={mentionPaletteRef}
-        items={mentionSuggestions}
+        items={composer.mentionSuggestions}
         loading={workspaceEntriesLoading}
         onSelect={handleMentionSelect}
-        onClose={handleMentionClose}
+        onClose={composer.handleMentionClose}
       />
     {/if}
 
     <div
       class="composer-dock"
-      class:disabled={isDisabled}
-      class:drag-active={isDragActive}
-      ondragenter={handleDragEnter}
-      ondragover={handleDragOver}
-      ondragleave={handleDragLeave}
-      ondrop={handleDrop}
+      class:disabled={composer.isDisabled}
+      class:drag-active={composer.isDragActive}
+      ondragenter={composer.handleDragEnter}
+      ondragover={composer.handleDragOver}
+      ondragleave={composer.handleDragLeave}
+      ondrop={composer.handleDrop}
     >
       {#if revision}
         <div class="revision-banner">
@@ -688,15 +242,15 @@
         onchange={handleFileInputChange}
       />
 
-      {#if attachments.length > 0}
+      {#if composer.attachments.length > 0}
         <div class="attachment-strip">
-          {#each attachments as attachment, index (attachment.id)}
+          {#each composer.attachments as attachment, index (attachment.id)}
             <div class="attachment-chip">
               <button
                 type="button"
                 class="attachment-chip-open"
                 aria-label={`View ${attachment.name}`}
-                onclick={() => openAttachmentLightbox(index)}
+                onclick={() => composer.openAttachmentLightbox(index)}
               >
                 <img
                   class="attachment-chip-preview"
@@ -714,7 +268,7 @@
                 type="button"
                 class="attachment-chip-remove"
                 aria-label={`Remove ${attachment.name}`}
-                onclick={() => removeAttachment(attachment.id)}
+                onclick={() => composer.removeAttachment(attachment.id)}
               >
                 <X class="attachment-chip-remove-icon" aria-hidden="true" size={14} />
               </button>
@@ -727,7 +281,7 @@
         <button
           type="button"
           class="attach-btn"
-          title={hasAttachments ? "Add more images" : "Attach images"}
+          title={composer.hasAttachments ? "Add more images" : "Attach images"}
           onclick={handleFilePickerOpen}
         >
           <ImagePlus class="attach-icon" aria-hidden="true" size={16} />
@@ -737,7 +291,7 @@
           bind:value={inputText}
           class="prompt-input"
           rows="1"
-          disabled={isDisabled}
+          disabled={composer.isDisabled}
           placeholder="Ask anything, or drop an image"
           onkeydown={handleInputKeydown}
           oninput={handleInputInteraction}
@@ -766,23 +320,23 @@
           <ModelDropdown
             {models}
             {selectedModel}
-            label={currentModelText}
-            disabled={isDisabled}
+            label={composer.currentModelText}
+            disabled={composer.isDisabled}
             onSelect={(model: RpcModelInfo) => onSelectModel(model)}
           />
           <ThinkingLevelDropdown
             value={thinkingLevel}
-            disabled={isDisabled}
+            disabled={composer.isDisabled}
             onSelect={(level: RpcThinkingLevel) => onSelectThinkingLevel(level)}
           />
           <button
             type="button"
             class="toggle-chip"
-            class:disabled={isDisabled}
+            class:disabled={composer.isDisabled}
             class:checked={autoCompactionEnabled}
-            disabled={isDisabled}
+            disabled={composer.isDisabled}
             aria-pressed={autoCompactionEnabled}
-            onclick={handleAutoCompactionToggle}
+            onclick={composer.handleAutoCompactionToggle}
           >
             <span class="toggle-chip-icon" aria-hidden="true">
               {#if autoCompactionEnabled}
@@ -793,10 +347,10 @@
           </button>
         </div>
         <div class="composer-action-cluster">
-          {#if attachmentSummary}
-            <span class="attachment-summary">{attachmentSummary}</span>
+          {#if composer.attachmentSummary}
+            <span class="attachment-summary">{composer.attachmentSummary}</span>
           {/if}
-          {#if hasPendingMessages}
+          {#if composer.hasPendingMessages}
             <div
               class="pending-queue-indicator"
               title={`${pendingMessageCount} message${pendingMessageCount > 1 ? "s" : ""} queued`}
@@ -807,12 +361,12 @@
           {/if}
           <button
             class="send-btn"
-            class:stop={showStopButton}
-            disabled={showStopButton ? !canAbort : !canSubmit}
-            aria-label={showStopButton ? "Stop response" : "Send message"}
+            class:stop={composer.showStopButton}
+            disabled={composer.showStopButton ? !composer.canAbort : !composer.canSubmit}
+            aria-label={composer.showStopButton ? "Stop response" : "Send message"}
             onclick={handlePrimaryAction}
           >
-            {#if showStopButton}
+            {#if composer.showStopButton}
               <Square class="send-icon stop-icon" aria-hidden="true" size={13} />
             {:else}
               <CornerDownLeft class="send-icon" aria-hidden="true" size={15} />
@@ -825,12 +379,12 @@
 </div>
 
 <ImageLightbox
-  open={lightboxOpen}
-  images={lightboxImages}
-  index={lightboxAttachmentIndex}
-  onClose={closeAttachmentLightbox}
-  onPrevious={showPreviousAttachmentLightboxImage}
-  onNext={showNextAttachmentLightboxImage}
+  open={composer.lightboxOpen}
+  images={composer.lightboxImages}
+  index={composer.lightboxAttachmentIndex}
+  onClose={composer.closeAttachmentLightbox}
+  onPrevious={composer.showPreviousAttachmentLightboxImage}
+  onNext={composer.showNextAttachmentLightboxImage}
 />
 
 <style>

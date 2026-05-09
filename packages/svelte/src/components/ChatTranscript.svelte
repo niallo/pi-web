@@ -5,7 +5,6 @@
   import { onMount } from "svelte";
   import type { TranscriptEntry } from "../composables/bridgeStore.svelte";
   import { userMessageCopyText } from "../utils/messageCopy";
-  import { buildToolDetailModel, buildToolInlineModel } from "../utils/toolBlock";
   import {
     buildTranscriptDisplayItems,
     contentBlocks,
@@ -20,6 +19,11 @@
     type TranscriptDisplayItem,
     type TranscriptSessionEventDisplayItem,
   } from "../utils/transcript";
+  import {
+    createChatTranscriptBlockState,
+    createChatTranscriptLightboxState,
+  } from "./chatTranscriptBlockState.svelte";
+  import { createChatTranscriptScrollState } from "./chatTranscriptScrollState.svelte";
   import DiffView from "./DiffView.svelte";
   import HighlightedCode from "./HighlightedCode.svelte";
   import ImageLightbox from "./ImageLightbox.svelte";
@@ -37,13 +41,7 @@
     showMessageIds = false,
     allowRevision = false,
     onLoadOlder = () => {},
-    onRevise = (_: {
-      entryId: string;
-      text: string;
-      preview: string;
-      hasImages: boolean;
-      images: RpcImageContent[];
-    }) => {},
+    onRevise = (_: { entryId: string; text: string; preview: string; hasImages: boolean; images: RpcImageContent[] }) => {},
     onOpenFileReference = (_: { path: string; lineNumber: number }) => {},
   }: {
     sessionPath?: string | null;
@@ -57,54 +55,19 @@
     showMessageIds?: boolean;
     allowRevision?: boolean;
     onLoadOlder?: () => void;
-    onRevise?: (payload: {
-      entryId: string;
-      text: string;
-      preview: string;
-      hasImages: boolean;
-      images: RpcImageContent[];
-    }) => void;
+    onRevise?: (payload: { entryId: string; text: string; preview: string; hasImages: boolean; images: RpcImageContent[] }) => void;
     onOpenFileReference?: (payload: { path: string; lineNumber: number }) => void;
   } = $props();
 
+  // ---- DOM refs ----
   let container = $state<HTMLDivElement | null>(null);
-  const userCopySelector = "[data-user-message-index]";
 
-  type SessionScrollSnapshot = {
-    anchorEntryId: string | null;
-    anchorOffset: number;
-    scrollTop: number;
-    stickToBottom: boolean;
-  };
+  // ---- state modules ----
+  const blockState = createChatTranscriptBlockState();
+  const lightbox = createChatTranscriptLightboxState();
+  const scroll = createChatTranscriptScrollState();
 
-  type PendingSessionRestore = {
-    sessionPath: string;
-    snapshot: SessionScrollSnapshot;
-    waitingForOlder: boolean;
-  };
-
-  let wasDisconnected = false;
-  let savedScrollTop = 0;
-  let savedScrollHeight = 0;
-  let topLoadArmed = true;
-  let shouldStickToBottom = true;
-  let pendingHistoryAnchor: { scrollTop: number; scrollHeight: number } | null = null;
-  let pendingSessionRestore: PendingSessionRestore | null = null;
-  const sessionScrollSnapshots = new Map<string, SessionScrollSnapshot>();
-  const TREE_ENTRY_SELECTOR = "[data-tree-entry-id], [data-tree-entry-ids]";
-
-  const TOP_LOAD_THRESHOLD = 120;
-  const AUTO_SCROLL_BOTTOM_THRESHOLD = 48;
-
-  // Reactive state
-  let expandedToolBlocks = $state(new Set<string>());
-  let expandedThinking = $state(new Set<string>());
-  let lightboxImages = $state<ImageContentBlock[]>([]);
-  let lightboxIndex = $state(0);
-
-  const toolBlockModelCache = new WeakMap<ToolContentBlock, ReturnType<typeof buildToolInlineModel>>();
-  const toolBlockDetailCache = new WeakMap<ToolContentBlock, ReturnType<typeof buildToolDetailModel>>();
-
+  // ---- derived ----
   let displayItems = $derived(
     buildTranscriptDisplayItems(messages, { pendingSessionEvent: pendingTranscriptConfigEvent }),
   );
@@ -120,6 +83,7 @@
     isCompacting && !isStreaming ? "Compacting context" : "Responding",
   );
 
+  // ---- display helpers ----
   function messageStableKey(msg: TranscriptEntry, index: number): string {
     return msg.transcriptKey ?? msg.id ?? `message:${index}`;
   }
@@ -144,36 +108,8 @@
     return "tool";
   }
 
-  function toolBlockKey(messageKey: string, blockIdx: number): string {
-    return `${messageKey}-${blockIdx}`;
-  }
-
   function shouldDeferMessageMarkdownErrors(msg: TranscriptEntry, mi: number): boolean {
     return msg.role === "assistant" && mi === streamingAssistantMessageIndex;
-  }
-
-  function toggleToolBlock(messageKey: string, blockIdx: number) {
-    const key = toolBlockKey(messageKey, blockIdx);
-    const next = new Set(expandedToolBlocks);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    expandedToolBlocks = next;
-  }
-
-  function toggleThinking(messageKey: string, blockIdx: number) {
-    const key = toolBlockKey(messageKey, blockIdx);
-    const next = new Set(expandedThinking);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    expandedThinking = next;
-  }
-
-  function isToolBlockExpanded(messageKey: string, blockIdx: number): boolean {
-    return expandedToolBlocks.has(toolBlockKey(messageKey, blockIdx));
-  }
-
-  function isThinkingExpanded(messageKey: string, blockIdx: number): boolean {
-    return expandedThinking.has(toolBlockKey(messageKey, blockIdx));
   }
 
   function previewText(text: string, maxLines: number = 8): string {
@@ -193,16 +129,8 @@
     return `${singleLine.slice(0, maxLength - 3).trimEnd()}...`;
   }
 
-  function toolBlockModel(block: ToolContentBlock) {
-    const cached = toolBlockModelCache.get(block);
-    if (cached) return cached;
-    const model = buildToolInlineModel(block);
-    toolBlockModelCache.set(block, model);
-    return model;
-  }
-
   function toolBlockDescriptor(block: ToolContentBlock) {
-    const model = toolBlockModel(block);
+    const model = blockState.toolBlockModel(block);
     return {
       name: block.toolName || "tool",
       params: model.title !== model.label ? model.title : undefined,
@@ -212,15 +140,7 @@
   }
 
   function toolBlockDiffStats(block: ToolContentBlock) {
-    return toolBlockModel(block).diffStats;
-  }
-
-  function toolBlockDetail(block: ToolContentBlock) {
-    const cached = toolBlockDetailCache.get(block);
-    if (cached) return cached;
-    const detail = buildToolDetailModel(block);
-    toolBlockDetailCache.set(block, detail);
-    return detail;
+    return blockState.toolBlockModel(block).diffStats;
   }
 
   function toolStatusMeta(status: ToolContentBlock["toolStatus"] | "success" | "error"): string | undefined {
@@ -237,7 +157,7 @@
 
   function toolBlockEmptyState(block: ToolContentBlock): string {
     if (block.toolStatus === "pending") return "Waiting for tool result.";
-    if (block.toolName === "write" && toolBlockDetail(block).kind === "empty")
+    if (block.toolName === "write" && blockState.toolBlockDetail(block).kind === "empty")
       return "File is empty.";
     return "No text result.";
   }
@@ -279,31 +199,11 @@
     return compactInlineText(errorMessageText(msg), 120);
   }
 
-  function openImageLightbox(images: readonly ImageContentBlock[], idx: number = 0) {
-    if (images.length === 0) return;
-    lightboxImages = [...images];
-    lightboxIndex = Math.min(Math.max(idx, 0), images.length - 1);
-  }
-
-  function closeImageLightbox() {
-    lightboxImages = [];
-    lightboxIndex = 0;
-  }
-
-  function showPreviousLightboxImage() {
-    if (lightboxImages.length <= 1) return;
-    lightboxIndex = (lightboxIndex + lightboxImages.length - 1) % lightboxImages.length;
-  }
-
-  function showNextLightboxImage() {
-    if (lightboxImages.length <= 1) return;
-    lightboxIndex = (lightboxIndex + 1) % lightboxImages.length;
-  }
-
   function messageIdLabel(msg: TranscriptEntry): string {
     return msg.id ?? "missing";
   }
 
+  // ---- user message helpers ----
   function userMessageText(msg: TranscriptEntry): string {
     return messageContent(msg).trim();
   }
@@ -352,169 +252,30 @@
     });
   }
 
-  // Scroll management
-  function treeEntryIdForElement(el: HTMLElement): string | null {
-    if (el.dataset.treeEntryId) return el.dataset.treeEntryId;
-    return el.dataset.treeEntryIds?.split(/\s+/).find(Boolean) ?? null;
-  }
-
-  function findTreeEntryElement(messageId: string): HTMLElement | null {
-    const root = container;
-    if (!root || !messageId) return null;
-    return (
-      [...root.querySelectorAll<HTMLElement>(TREE_ENTRY_SELECTOR)].find(el => {
-        if (el.dataset.treeEntryId === messageId) return true;
-        return (
-          el.dataset.treeEntryIds
-            ?.split(/\s+/)
-            .filter(Boolean)
-            .includes(messageId) ?? false
-        );
-      }) ?? null
-    );
-  }
-
-  function isNearBottom(): boolean {
-    const root = container;
-    if (!root) return true;
-    return root.scrollHeight - root.clientHeight - root.scrollTop <= AUTO_SCROLL_BOTTOM_THRESHOLD;
-  }
-
-  function captureScrollSnapshot(): SessionScrollSnapshot | null {
-    const root = container;
-    if (!root) return null;
-    const rootRect = root.getBoundingClientRect();
-    const anchorElement = [...root.querySelectorAll<HTMLElement>(TREE_ENTRY_SELECTOR)].find(
-      el => el.getBoundingClientRect().bottom > rootRect.top,
-    );
-    return {
-      anchorEntryId: anchorElement ? treeEntryIdForElement(anchorElement) : null,
-      anchorOffset: anchorElement
-        ? anchorElement.getBoundingClientRect().top - rootRect.top
-        : 0,
-      scrollTop: root.scrollTop,
-      stickToBottom: isNearBottom(),
-    };
-  }
-
-  function rememberSessionScroll(sp: string | null = sessionPath) {
-    if (!sp) return;
-    const snapshot = captureScrollSnapshot();
-    if (!snapshot) return;
-    sessionScrollSnapshots.set(sp, snapshot);
-  }
-
-  function preserveScroll() {
-    if (!container) return;
-    rememberSessionScroll();
-    savedScrollTop = container.scrollTop;
-    savedScrollHeight = container.scrollHeight;
-    wasDisconnected = true;
-  }
-
-  function restoreScroll() {
-    if (!container || !wasDisconnected) return;
-    const delta = container.scrollHeight - savedScrollHeight;
-    container.scrollTop = savedScrollTop + delta;
-    shouldStickToBottom = isNearBottom();
-    wasDisconnected = false;
-  }
-
-  function scrollToBottom() {
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
-    shouldStickToBottom = true;
-  }
-
-  function restoreSnapshotByAnchor(snapshot: SessionScrollSnapshot): boolean {
-    const root = container;
-    if (!root || !snapshot.anchorEntryId) return false;
-    const target = findTreeEntryElement(snapshot.anchorEntryId);
-    if (!target) return false;
-    const rootRect = root.getBoundingClientRect();
-    const targetTop = target.getBoundingClientRect().top - rootRect.top;
-    root.scrollTop += targetTop - snapshot.anchorOffset;
-    shouldStickToBottom = isNearBottom();
-    return true;
-  }
-
-  function restoreSnapshotByScrollTop(snapshot: SessionScrollSnapshot) {
-    if (!container) return;
-    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    container.scrollTop = Math.min(maxScrollTop, snapshot.scrollTop);
-    shouldStickToBottom = isNearBottom();
-  }
-
-  function tryRestorePendingSessionScroll(): boolean {
-    const pending = pendingSessionRestore;
-    if (!pending || sessionPath !== pending.sessionPath) return false;
-    if (pending.snapshot.stickToBottom) {
-      scrollToBottom();
-      pendingSessionRestore = null;
-      return true;
-    }
-    if (pageLoading || initialLoading) return true;
-    pending.waitingForOlder = false;
-    if (restoreSnapshotByAnchor(pending.snapshot)) {
-      pendingSessionRestore = null;
-      return true;
-    }
-    if (pending.snapshot.anchorEntryId && hasOlder && !pending.waitingForOlder) {
-      pending.waitingForOlder = true;
-      onLoadOlder();
-      return true;
-    }
-    restoreSnapshotByScrollTop(pending.snapshot);
-    pendingSessionRestore = null;
-    return true;
-  }
-
-  async function syncViewportAfterRender() {
-    await tick();
-    if (pendingHistoryAnchor && container) {
-      const delta = container.scrollHeight - pendingHistoryAnchor.scrollHeight;
-      container.scrollTop = pendingHistoryAnchor.scrollTop + delta;
-      shouldStickToBottom = isNearBottom();
-      pendingHistoryAnchor = null;
-      return;
-    }
-    if (tryRestorePendingSessionScroll()) return;
-    if (wasDisconnected) { restoreScroll(); return; }
-    if (shouldStickToBottom) scrollToBottom();
-  }
-
-  function scrollToMessageId(messageId: string): boolean {
-    const target = findTreeEntryElement(messageId);
-    if (!target) return false;
-    target.scrollIntoView({ block: "center", behavior: "smooth" });
-    return true;
-  }
-
+  // ---- scroll glue ----
   function handleScroll() {
-    shouldStickToBottom = isNearBottom();
-    maybeLoadOlderTranscript();
+    scroll.handleScroll(container, {
+      hasOlder, initialLoading, pageLoading, onLoadOlder,
+    });
   }
 
   function requestOlderTranscript() {
-    if (!container) return;
-    if (!hasOlder || initialLoading || pageLoading) return;
-    pendingHistoryAnchor = {
-      scrollTop: container.scrollTop,
-      scrollHeight: container.scrollHeight,
-    };
-    onLoadOlder();
+    scroll.requestOlderTranscript(container, {
+      hasOlder, initialLoading, pageLoading, onLoadOlder,
+    });
   }
 
-  function maybeLoadOlderTranscript() {
-    if (!container) return;
-    if (!hasOlder || initialLoading || pageLoading) return;
-    if (container.scrollTop > TOP_LOAD_THRESHOLD) { topLoadArmed = true; return; }
-    if (!topLoadArmed) return;
-    topLoadArmed = false;
-    requestOlderTranscript();
+  function rememberSessionScroll(sp: string | null = sessionPath) {
+    scroll.rememberSessionScroll(container, sp);
   }
 
-  // Copy handling
+  function preserveScroll() {
+    scroll.preserveScroll(container);
+  }
+
+  // ---- copy handling ----
+  const userCopySelector = "[data-user-message-index]";
+
   function userMessageElementForNode(node: Node | null): HTMLElement | null {
     const root = container;
     if (!root || !node) return null;
@@ -560,54 +321,51 @@
     event.preventDefault();
   }
 
-  function tick(): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, 0));
+  // ---- exposed API ----
+  export { preserveScroll, rememberSessionScroll };
+
+  function scrollToMessageId(messageId: string): boolean {
+    return scroll.scrollToMessageId(container, messageId);
   }
+  export { scrollToMessageId };
 
-  export { preserveScroll, rememberSessionScroll, scrollToMessageId };
-
-  // Effects
+  // ---- effects ----
   $effect(() => {
     void sessionPath;
     if (sessionPath && previousSessionPath !== null && previousSessionPath !== sessionPath) {
       rememberSessionScroll(previousSessionPath);
     }
-    pendingSessionRestore = sessionPath
+    scroll.pendingSessionRestore = sessionPath
       ? (() => {
-          const snapshot = sessionScrollSnapshots.get(sessionPath);
+          const snapshot = scroll.sessionScrollSnapshots.get(sessionPath);
           return snapshot
             ? { sessionPath, snapshot, waitingForOlder: false }
             : null;
         })()
       : null;
-    topLoadArmed = true;
+    scroll.topLoadArmed = true;
   });
 
   let previousSessionPath = $state<string | null>(null);
   $effect(() => { previousSessionPath = sessionPath; });
 
   $effect(() => {
-    void [
-      sessionPath,
-      messages,
-      hasOlder,
-      initialLoading,
-      pageLoading,
-      showBusyIndicator,
-    ];
-    void syncViewportAfterRender();
+    void [sessionPath, messages, hasOlder, initialLoading, pageLoading, showBusyIndicator];
+    void scroll.syncViewportAfterRender(container, {
+      sessionPath, hasOlder, initialLoading, pageLoading, onLoadOlder,
+    });
   });
 
   $effect(() => {
     if (!hasOlder || initialLoading || pageLoading) return;
     if (!container) return;
-    if (container.scrollTop > TOP_LOAD_THRESHOLD) topLoadArmed = true;
+    if (container.scrollTop > 120) scroll.topLoadArmed = true;
   });
 
   onMount(() => {
     document.addEventListener("copy", handleCopy);
     container?.addEventListener("scroll", handleScroll, { passive: true });
-    shouldStickToBottom = isNearBottom();
+    scroll.shouldStickToBottom = scroll.captureScrollSnapshot(container)?.stickToBottom ?? true;
     return () => {
       document.removeEventListener("copy", handleCopy);
       container?.removeEventListener("scroll", handleScroll);
@@ -683,8 +441,8 @@
             <button
               type="button"
               class="tool-inline-toggle"
-              onclick={() => toggleToolBlock(messageStableKey(item.message, item.messageIndex), -1)}
-              aria-expanded={isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -1)}
+              onclick={() => blockState.toggleToolBlock(messageStableKey(item.message, item.messageIndex), -1)}
+              aria-expanded={blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -1)}
             >
               <span class="tool-inline-summary">
                 <span class="tool-inline-name">{toolResultName(item.message)}</span>
@@ -694,7 +452,7 @@
               {/if}
             </button>
 
-            {#if isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -1)}
+            {#if blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -1)}
               <div class="tool-inline-details">
                 {#if showMessageIds}
                   <span class="message-debug-id">ID {messageIdLabel(item.message)}</span>
@@ -708,7 +466,7 @@
                           type="button"
                           class="message-image-button"
                           aria-label={`Open image ${imgIdx + 1}`}
-                          onclick={() => openImageLightbox(toolResultImages(item.message), imgIdx)}
+                          onclick={() => lightbox.openImageLightbox(toolResultImages(item.message), imgIdx)}
                         >
                           <img
                             class="message-image"
@@ -751,8 +509,8 @@
             <button
               type="button"
               class="tool-inline-toggle"
-              onclick={() => toggleToolBlock(messageStableKey(item.message, item.messageIndex), -2)}
-              aria-expanded={isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -2)}
+              onclick={() => blockState.toggleToolBlock(messageStableKey(item.message, item.messageIndex), -2)}
+              aria-expanded={blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -2)}
             >
               <span class="tool-inline-summary">
                 <span class="tool-inline-name">{errorSummaryLabel(item.message)}</span>
@@ -762,7 +520,7 @@
               {/if}
             </button>
 
-            {#if isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -2)}
+            {#if blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -2)}
               <div class="tool-inline-details">
                 {#if showMessageIds}
                   <span class="message-debug-id">ID {messageIdLabel(item.message)}</span>
@@ -816,12 +574,12 @@
                 <div class="thinking-block">
                   <button
                     class="thinking-toggle"
-                    onclick={() => toggleThinking(messageStableKey(item.message, item.messageIndex), bIdx)}
+                    onclick={() => blockState.toggleThinking(messageStableKey(item.message, item.messageIndex), bIdx)}
                   >
                     <Sparkle class="toggle-icon" aria-hidden="true" size={14} />
                     Thinking
                   </button>
-                  {#if isThinkingExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
+                  {#if blockState.isThinkingExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
                     <MarkdownRenderer
                       class="thinking-content"
                       content={block.text}
@@ -836,8 +594,8 @@
                     <button
                       type="button"
                       class="tool-inline-toggle"
-                      onclick={() => toggleToolBlock(messageStableKey(item.message, item.messageIndex), bIdx)}
-                      aria-expanded={isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
+                      onclick={() => blockState.toggleToolBlock(messageStableKey(item.message, item.messageIndex), bIdx)}
+                      aria-expanded={blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
                     >
                       <span class="tool-inline-summary">
                         <span class="tool-inline-name">{toolBlockDescriptor(block).name}</span>
@@ -856,7 +614,7 @@
                       {/if}
                     </button>
 
-                    {#if isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
+                    {#if blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
                       <div class="tool-inline-details">
                         {#if showMessageIds && block.resultSourceMessageId}
                           <span class="message-debug-id">ID {block.resultSourceMessageId}</span>
@@ -870,7 +628,7 @@
                                   type="button"
                                   class="message-image-button"
                                   aria-label={`Open image ${imgIdx + 1}`}
-                                  onclick={() => openImageLightbox(toolBlockImages(block), imgIdx)}
+                                  onclick={() => lightbox.openImageLightbox(toolBlockImages(block), imgIdx)}
                                 >
                                   <img class="message-image" src={image.src} alt={image.alt} loading="lazy" />
                                 </button>
@@ -879,32 +637,32 @@
                           </div>
                         {/if}
 
-                        {#if toolBlockDetail(block).kind !== "empty"}
+                        {#if blockState.toolBlockDetail(block).kind !== "empty"}
                           <section class="tool-inline-section">
-                            {#if toolBlockDetail(block).kind === "diff"}
+                            {#if blockState.toolBlockDetail(block).kind === "diff"}
                               <DiffView
-                                diff={toolBlockDetail(block).text || ""}
-                                path={toolBlockDetail(block).path}
-                                edits={toolBlockDetail(block).edits || []}
+                                diff={blockState.toolBlockDetail(block).text || ""}
+                                path={blockState.toolBlockDetail(block).path}
+                                edits={blockState.toolBlockDetail(block).edits || []}
                               />
-                            {:else if toolBlockDetail(block).kind === "code"}
+                            {:else if blockState.toolBlockDetail(block).kind === "code"}
                               <div class="tool-inline-code-panel">
                                 <HighlightedCode
-                                  code={toolBlockDetail(block).text || ""}
-                                  path={toolBlockDetail(block).path}
+                                  code={blockState.toolBlockDetail(block).text || ""}
+                                  path={blockState.toolBlockDetail(block).path}
                                 />
                               </div>
-                            {:else if toolBlockDetail(block).kind === "bash"}
+                            {:else if blockState.toolBlockDetail(block).kind === "bash"}
                               <div class="tool-inline-code-panel">
-                                {#if toolBlockDetail(block).command}
-                                  <pre class="tool-inline-code-output tool-inline-command-output">{toolBlockDetail(block).command}</pre>
+                                {#if blockState.toolBlockDetail(block).command}
+                                  <pre class="tool-inline-code-output tool-inline-command-output">{blockState.toolBlockDetail(block).command}</pre>
                                 {/if}
-                                {#if toolBlockDetail(block).text}
-                                  <pre class="tool-inline-code-output">{toolBlockDetail(block).text}</pre>
+                                {#if blockState.toolBlockDetail(block).text}
+                                  <pre class="tool-inline-code-output">{blockState.toolBlockDetail(block).text}</pre>
                                 {/if}
                               </div>
                             {:else}
-                              <pre class="tool-inline-pre">{toolBlockDetail(block).text}</pre>
+                              <pre class="tool-inline-pre">{blockState.toolBlockDetail(block).text}</pre>
                             {/if}
                           </section>
                         {:else if toolBlockImages(block).length === 0}
@@ -920,7 +678,7 @@
                     type="button"
                     class="message-image-button"
                     aria-label="Open image"
-                    onclick={() => openImageLightbox([block])}
+                    onclick={() => lightbox.openImageLightbox([block])}
                   >
                     <img class="message-image" src={block.src} alt={block.alt} loading="lazy" />
                   </button>
@@ -963,12 +721,12 @@
   {/if}
 
   <ImageLightbox
-    open={lightboxImages.length > 0}
-    images={lightboxImages}
-    index={lightboxIndex}
-    onClose={closeImageLightbox}
-    onPrevious={showPreviousLightboxImage}
-    onNext={showNextLightboxImage}
+    open={lightbox.lightboxImages.length > 0}
+    images={lightbox.lightboxImages}
+    index={lightbox.lightboxIndex}
+    onClose={lightbox.closeImageLightbox}
+    onPrevious={lightbox.showPreviousLightboxImage}
+    onNext={lightbox.showNextLightboxImage}
   />
 </div>
 
