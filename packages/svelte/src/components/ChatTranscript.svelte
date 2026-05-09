@@ -363,17 +363,13 @@
   });
 
   onMount(() => {
-    document.addEventListener("copy", handleCopy);
-    container?.addEventListener("scroll", handleScroll, { passive: true });
     scroll.shouldStickToBottom = scroll.captureScrollSnapshot(container)?.stickToBottom ?? true;
-    return () => {
-      document.removeEventListener("copy", handleCopy);
-      container?.removeEventListener("scroll", handleScroll);
-    };
   });
 </script>
 
-<div bind:this={container} class="chat-transcript">
+<svelte:document oncopy={handleCopy} />
+
+<div bind:this={container} class="chat-transcript" onscroll={handleScroll}>
   {#if initialLoading}
     <div class="empty-state loading-state">
       <p class="empty-title">Loading conversation</p>

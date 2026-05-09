@@ -774,12 +774,13 @@
   });
 
   // Auto-dismiss bridge.notifications after 5 seconds
+  let notificationTimerIds = new Set<string>();
+
   $effect(() => {
     for (const n of bridge.notifications) {
-      if (!(n as Record<string, unknown>)._timerSet) {
-        (n as Record<string, unknown>)._timerSet = true;
-        setTimeout(() => bridge.dismissNotification(n.id), 5000);
-      }
+      if (notificationTimerIds.has(n.id)) continue;
+      notificationTimerIds.add(n.id);
+      setTimeout(() => bridge.dismissNotification(n.id), 5000);
     }
   });
 
@@ -791,16 +792,14 @@
 
   onMount(() => {
     syncCompactLayout();
-    window.addEventListener("resize", syncCompactLayout);
-    window.addEventListener("keydown", handleGlobalKeydown);
 
     return () => {
       stopRailResize();
-      window.removeEventListener("resize", syncCompactLayout);
-      window.removeEventListener("keydown", handleGlobalKeydown);
     };
   });
 </script>
+
+<svelte:window onresize={syncCompactLayout} onkeydown={handleGlobalKeydown} />
 
 <div
   class="app-shell"
