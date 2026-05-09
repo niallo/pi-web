@@ -215,7 +215,7 @@
     grid-template-columns: auto minmax(0, 1fr);
     gap: 5px;
     align-items: center;
-    padding: 2px 4px;
+    padding: 0px 4px;
     border: 1px solid transparent;
     border-radius: 5px;
     appearance: none;
@@ -232,7 +232,7 @@
     grid-template-columns: auto minmax(0, 1fr);
     gap: 5px;
     align-items: center;
-    padding: 2px 4px;
+    padding: 0px 4px;
     border: 1px solid transparent;
     border-radius: 5px;
     transition:
