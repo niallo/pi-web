@@ -2,58 +2,73 @@
   import FolderPlus from "lucide-svelte/icons/folder-plus";
   import RefreshCw from "lucide-svelte/icons/refresh-cw";
   import SessionRail from "../components/SessionRail.svelte";
-  import type { SessionEntry } from "../composables/bridgeStore.svelte";
+  import type {
+    SessionEntry,
+    WorkspaceSummary,
+  } from "../composables/bridgeStore.svelte";
 
   const RAIL_ACTION_ICON_SIZE = 16;
   const WORKSPACE_FOLDER_ICON_STYLE = "display: block;";
 
   let {
-    sessions,
+    workspaces,
+    workspaceSessions,
     activeSessionPath,
+    activeWorkspacePath,
     runningSessionPaths,
+    workspaceSessionLoaded,
+    workspaceSessionLoading,
     workspaceSessionCursors,
     sidebarOpen = false,
     collapsed = false,
     onCloseSidebar = () => {},
     onRegisterWorkspace = () => {},
     onSelectSession = (_: string) => {},
-    onRefreshSessions = () => {},
+    onRefreshWorkspaces = () => {},
+    onExpandWorkspace = (_: string) => {},
     onLoadOlderSessions = (_: {
       workspacePath: string;
       cursor?: string | null;
     }) => {},
     onNewSession = (_: string) => {},
-    onRenameSession = (_: string, __: string) => {},
     onDeleteSession = (_: string) => {},
   }: {
-    sessions: readonly SessionEntry[];
+    workspaces: readonly WorkspaceSummary[];
+    workspaceSessions: Readonly<Record<string, readonly SessionEntry[]>>;
     activeSessionPath: string | null;
+    activeWorkspacePath: string | null;
     runningSessionPaths: readonly string[];
+    workspaceSessionLoaded: Readonly<Record<string, boolean>>;
+    workspaceSessionLoading: Readonly<Record<string, boolean>>;
     workspaceSessionCursors: Readonly<Record<string, string | null>>;
     sidebarOpen?: boolean;
     collapsed?: boolean;
     onCloseSidebar?: () => void;
     onRegisterWorkspace?: () => void;
     onSelectSession?: (sessionPath: string) => void;
-    onRefreshSessions?: () => void;
+    onRefreshWorkspaces?: () => void;
+    onExpandWorkspace?: (workspacePath: string) => void;
     onLoadOlderSessions?: (payload: {
       workspacePath: string;
       cursor?: string | null;
     }) => void;
     onNewSession?: (workspacePath: string) => void;
-    onRenameSession?: (sessionPath: string, name: string) => void;
     onDeleteSession?: (sessionPath: string) => void;
   } = $props();
 </script>
 
 <aside class="left-rail" class:open={sidebarOpen} class:collapsed>
   <SessionRail
-    {sessions}
+    {workspaces}
+    {workspaceSessions}
     {activeSessionPath}
+    {activeWorkspacePath}
     {runningSessionPaths}
+    {workspaceSessionLoaded}
+    {workspaceSessionLoading}
     {workspaceSessionCursors}
     onSelect={(sp: string) => onSelectSession(sp)}
-    onRename={(e: { sessionPath: string; name: string }) => onRenameSession(e.sessionPath, e.name)}
+    onExpandWorkspace={(wp: string) => onExpandWorkspace(wp)}
     onDelete={(sp: string) => onDeleteSession(sp)}
     onNewSession={(wp: string) => onNewSession(wp)}
     onLoadOlderSessions={(e: { workspacePath: string; cursor?: string | null }) => onLoadOlderSessions(e)}
@@ -76,9 +91,9 @@
       <button
         class="rail-button"
         type="button"
-        aria-label="Refresh sessions"
-        title="Refresh sessions"
-        onclick={onRefreshSessions}
+        aria-label="Refresh workspaces"
+        title="Refresh workspaces"
+        onclick={onRefreshWorkspaces}
       >
           <RefreshCw size={RAIL_ACTION_ICON_SIZE} aria-hidden="true" />
       </button>

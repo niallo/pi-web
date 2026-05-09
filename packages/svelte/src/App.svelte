@@ -428,8 +428,19 @@
     }
   }
 
-  function handleRefreshSessions() {
-    bridge.refreshWorkspaceSessions().catch(() => {});
+  function handleRefreshWorkspaces() {
+    bridge.refreshWorkspaces().catch(() => {});
+  }
+
+  function handleExpandWorkspace(workspacePath: string) {
+    if (bridge.workspaceSessionLoaded[workspacePath] || bridge.workspaceSessionLoading[workspacePath]) {
+      return;
+    }
+    bridge.loadWorkspaceSessions({
+      workspacePath,
+      limit: 5,
+      merge: "replace",
+    }).catch(() => {});
   }
 
   function handleLoadOlderSessions(payload: {
@@ -465,17 +476,8 @@
           | { cancelled?: boolean; workspacePath?: string }
           | undefined;
         if (data?.cancelled) return;
-        handleRefreshSessions();
+        handleRefreshWorkspaces();
       }
-    } catch {
-      // Ignore
-    }
-  }
-
-  async function handleRenameSession(sessionPath: string, name: string) {
-    try {
-      const response = await bridge.renameSession(sessionPath, name);
-      if (response.success) handleRefreshSessions();
     } catch {
       // Ignore
     }
@@ -484,7 +486,7 @@
   async function handleDeleteSession(sessionPath: string) {
     try {
       const response = await bridge.deleteSession(sessionPath);
-      if (response.success) handleRefreshSessions();
+      if (response.success) handleRefreshWorkspaces();
     } catch {
       // Ignore
     }
@@ -810,19 +812,23 @@
   style={allStyle}
 >
   <AppSidebar
-    sessions={bridge.sessions}
+    workspaces={bridge.workspaces}
+    workspaceSessions={bridge.workspaceSessions}
     activeSessionPath={bridge.activeSessionPath}
+    activeWorkspacePath={bridge.sessionState?.workspacePath ?? activeSessionEntry?.workspacePath ?? null}
     runningSessionPaths={bridge.runningSessionPaths}
+    workspaceSessionLoaded={bridge.workspaceSessionLoaded}
+    workspaceSessionLoading={bridge.workspaceSessionLoading}
     workspaceSessionCursors={bridge.workspaceSessionCursors}
     {sidebarOpen}
     collapsed={leftSidebarCollapsed}
     onRegisterWorkspace={handleRegisterWorkspace}
     onCloseSidebar={() => (sidebarOpen = false)}
     onSelectSession={handleSessionSelect}
-    onRefreshSessions={handleRefreshSessions}
+    onRefreshWorkspaces={handleRefreshWorkspaces}
+    onExpandWorkspace={handleExpandWorkspace}
     onLoadOlderSessions={handleLoadOlderSessions}
     onNewSession={handleNewSession}
-    onRenameSession={handleRenameSession}
     onDeleteSession={handleDeleteSession}
   />
 

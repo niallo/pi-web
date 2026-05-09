@@ -2,35 +2,45 @@
   import type { Snippet } from "svelte";
   import Folder from "lucide-svelte/icons/folder";
   import FolderOpen from "lucide-svelte/icons/folder-open";
-  import Pencil from "lucide-svelte/icons/pencil";
   import Plus from "lucide-svelte/icons/plus";
   import Search from "lucide-svelte/icons/search";
   import Trash2 from "lucide-svelte/icons/trash-2";
-  import type { SessionEntry } from "../composables/bridgeStore.svelte";
+  import type {
+    SessionEntry,
+    WorkspaceSummary,
+  } from "../composables/bridgeStore.svelte";
 
   let {
-    sessions = [] as readonly SessionEntry[],
+    workspaces = [] as readonly WorkspaceSummary[],
+    workspaceSessions = {} as Readonly<Record<string, readonly SessionEntry[]>>,
     activeSessionPath = null as string | null,
+    activeWorkspacePath = null as string | null,
     runningSessionPaths = [] as readonly string[],
+    workspaceSessionLoaded = {} as Readonly<Record<string, boolean>>,
+    workspaceSessionLoading = {} as Readonly<Record<string, boolean>>,
     workspaceSessionCursors = {} as Readonly<Record<string, string | null>>,
     onSelect = (_: string) => {},
-    onRename = (_: { sessionPath: string; name: string }) => {},
     onDelete = (_: string) => {},
     onNewSession = (_: string) => {},
+    onExpandWorkspace = (_: string) => {},
     onLoadOlderSessions = (_: {
       workspacePath: string;
       cursor?: string | null;
     }) => {},
     headerActions,
   }: {
-    sessions?: readonly SessionEntry[];
+    workspaces?: readonly WorkspaceSummary[];
+    workspaceSessions?: Readonly<Record<string, readonly SessionEntry[]>>;
     activeSessionPath?: string | null;
+    activeWorkspacePath?: string | null;
     runningSessionPaths?: readonly string[];
+    workspaceSessionLoaded?: Readonly<Record<string, boolean>>;
+    workspaceSessionLoading?: Readonly<Record<string, boolean>>;
     workspaceSessionCursors?: Readonly<Record<string, string | null>>;
     onSelect?: (sessionPath: string) => void;
-    onRename?: (payload: { sessionPath: string; name: string }) => void;
     onDelete?: (sessionPath: string) => void;
     onNewSession?: (workspacePath: string) => void;
+    onExpandWorkspace?: (workspacePath: string) => void;
     onLoadOlderSessions?: (payload: {
       workspacePath: string;
       cursor?: string | null;
@@ -39,9 +49,8 @@
   } = $props();
 
   const RECENT_SESSION_LIMIT = 5;
-  const UNKNOWN_WORKSPACE_ID = "unknown-workspace";
   const MENU_WIDTH = 136;
-  const MENU_HEIGHT = 80;
+  const MENU_HEIGHT = 44;
   const WORKSPACE_FOLDER_ICON_SIZE = 15;
   const WORKSPACE_FOLDER_ICON_STYLE = "display: block; flex-shrink: 0;";
 
@@ -50,10 +59,10 @@
     name: string;
     path: string;
     sessions: SessionEntry[];
-    actualSessions: SessionEntry[];
-    latestActivity: number;
     isExpanded: boolean;
     isActive: boolean;
+    isLoaded: boolean;
+    isLoading: boolean;
     query: string;
     recentSessions: SessionEntry[];
     remainingSessions: SessionEntry[];
@@ -71,11 +80,7 @@
   let expandedWorkspaceIds = $state<Set<string>>(new Set());
   let activeOlderWorkspaceId = $state<string | null>(null);
   let workspaceQueries = $state<Record<string, string>>({});
-  let editingPath = $state<string | null>(null);
-  let editingName = $state("");
-  let editInputRef = $state<HTMLInputElement | null>(null);
-  let lastAutoExpandedSessionPath: string | null = null;
-  let hasAutoExpandedInitialWorkspace = false;
+  let lastAutoExpandedWorkspacePath: string | null = null;
   let menu = $state<MenuState>({
     visible: false,
     sessionPath: null,
@@ -84,139 +89,63 @@
   });
 
   function sessionActivityValue(session: SessionEntry): number {
-    if (session.isWorkspacePlaceholder) return Number.NEGATIVE_INFINITY;
     const parsed = Date.parse(session.updatedAt ?? session.timestamp ?? "");
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
-  }
-
-  function workspaceFromSessionPath(sessionPath: string): {
-    id: string;
-    name: string;
-    path: string;
-  } | null {
-    const match = /[\\/]\.pi[\\/]agent[\\/]sessions[\\/]([^\\/]+)[\\/]/.exec(
-      sessionPath,
-    );
-    const encoded = match?.[1];
-    if (!encoded) return null;
-    const stripped = encoded.replace(/^--/, "").replace(/--$/, "");
-    const homeMatch = /^home-([^-]+)-(.+)$/.exec(stripped);
-    if (homeMatch) {
-      const [, user, workspaceName] = homeMatch;
-      const wp = `/home/${user}/${workspaceName}`;
-      return { id: wp, name: workspaceName, path: wp };
-    }
-    return { id: encoded, name: stripped || encoded, path: stripped || encoded };
-  }
-
-  function getWorkspaceId(session: SessionEntry): string {
-    return (
-      session.workspaceId ??
-      session.workspacePath ??
-      workspaceFromSessionPath(session.path)?.id ??
-      UNKNOWN_WORKSPACE_ID
-    );
-  }
-
-  function getWorkspacePath(session: SessionEntry): string {
-    return (
-      session.workspacePath ??
-      workspaceFromSessionPath(session.path)?.path ??
-      "Unknown workspace"
-    );
-  }
-
-  function getWorkspaceName(session: SessionEntry): string {
-    if (session.workspaceName) return session.workspaceName;
-    const fb = workspaceFromSessionPath(session.path);
-    if (fb) return fb.name;
-    const wp = getWorkspacePath(session);
-    const parts = wp.split(/[\\/]/).filter(Boolean);
-    return parts.at(-1) ?? wp;
   }
 
   function compareSessionsByActivity(
     left: SessionEntry,
     right: SessionEntry,
   ): number {
-    const ad = sessionActivityValue(right) - sessionActivityValue(left);
-    if (ad !== 0) return ad;
+    const activityDelta = sessionActivityValue(right) - sessionActivityValue(left);
+    if (activityDelta !== 0) return activityDelta;
     return right.path.localeCompare(left.path);
   }
 
   function sessionMatchesQuery(session: SessionEntry, query: string): boolean {
-    const nq = query.trim().toLowerCase();
-    if (!nq) return true;
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return true;
     return [
       session.name,
       session.path,
       session.workspaceName,
       session.workspacePath,
     ]
-      .filter((v): v is string => typeof v === "string")
-      .some(v => v.toLowerCase().includes(nq));
+      .filter((value): value is string => typeof value === "string")
+      .some(value => value.toLowerCase().includes(normalizedQuery));
   }
 
   let workspaceGroups = $derived.by((): WorkspaceGroup[] => {
-    const groups = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        path: string;
-        sessions: SessionEntry[];
-        latestActivity: number;
-      }
-    >();
-
-    for (const s of sessions) {
-      const id = getWorkspaceId(s);
-      const existing = groups.get(id);
-      const activity = sessionActivityValue(s);
-      if (existing) {
-        existing.sessions.push(s);
-        existing.latestActivity = Math.max(existing.latestActivity, activity);
-      } else {
-        groups.set(id, {
-          id,
-          name: getWorkspaceName(s),
-          path: getWorkspacePath(s),
-          sessions: [s],
-          latestActivity: activity,
-        });
-      }
-    }
-
-    return Array.from(groups.values())
-      .map(group => {
-        const groupSessions = [...group.sessions].sort(compareSessionsByActivity);
-        const actualSessions = groupSessions.filter(s => !s.isWorkspacePlaceholder);
-        const query = workspaceQueries[group.id] ?? "";
-        const remaining = actualSessions.slice(RECENT_SESSION_LIMIT);
-        const nextCursor = workspaceSessionCursors[group.path] ?? null;
+    return [...workspaces]
+      .map(workspace => {
+        const groupSessions = [...(workspaceSessions[workspace.path] ?? [])].sort(
+          compareSessionsByActivity,
+        );
+        const query = workspaceQueries[workspace.id] ?? "";
+        const remainingSessions = groupSessions.slice(RECENT_SESSION_LIMIT);
 
         return {
-          ...group,
+          id: workspace.id,
+          name: workspace.name,
+          path: workspace.path,
           sessions: groupSessions,
-          actualSessions,
-          isExpanded: expandedWorkspaceIds.has(group.id),
-          isActive: actualSessions.some(s => s.path === activeSessionPath),
+          isExpanded: expandedWorkspaceIds.has(workspace.id),
+          isActive: workspace.path === activeWorkspacePath,
+          isLoaded: workspaceSessionLoaded[workspace.path] === true,
+          isLoading: workspaceSessionLoading[workspace.path] === true,
           query,
-          recentSessions: actualSessions.slice(0, RECENT_SESSION_LIMIT),
-          remainingSessions: remaining,
-          filteredRemainingSessions: remaining.filter(s => sessionMatchesQuery(s, query)),
-          nextCursor,
+          recentSessions: groupSessions.slice(0, RECENT_SESSION_LIMIT),
+          remainingSessions,
+          filteredRemainingSessions: remainingSessions.filter(session =>
+            sessionMatchesQuery(session, query),
+          ),
+          nextCursor: workspaceSessionCursors[workspace.path] ?? null,
         };
-      })
-      .sort((a, b) => {
-        const ad = b.latestActivity - a.latestActivity;
-        if (ad !== 0) return ad;
-        return a.name.localeCompare(b.name);
       });
   });
 
   let activeOlderWorkspace = $derived(
-    workspaceGroups.find(w => w.id === activeOlderWorkspaceId) ?? null,
+    workspaceGroups.find(workspace => workspace.id === activeOlderWorkspaceId) ?? null,
   );
 
   let menuPanelStyle = $derived(`left: ${menu.x}px; top: ${menu.y}px`);
@@ -236,9 +165,12 @@
   function openOlderSessions(workspaceId: string) {
     if (workspaceQueries[workspaceId] === undefined) workspaceQueries[workspaceId] = "";
     activeOlderWorkspaceId = workspaceId;
-    const ws = workspaceGroups.find(g => g.id === workspaceId);
-    if (ws?.nextCursor && ws.remainingSessions.length === 0) {
-      onLoadOlderSessions({ workspacePath: ws.path, cursor: ws.nextCursor });
+    const workspace = workspaceGroups.find(group => group.id === workspaceId);
+    if (workspace?.nextCursor && workspace.remainingSessions.length === 0) {
+      onLoadOlderSessions({
+        workspacePath: workspace.path,
+        cursor: workspace.nextCursor,
+      });
     }
   }
 
@@ -267,43 +199,17 @@
   function openMenu(event: MouseEvent, sessionPath: string) {
     event.preventDefault();
     event.stopPropagation();
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
     let x = event.clientX + 4;
     let y = event.clientY + 4;
-    if (x + MENU_WIDTH > vw) x = event.clientX - MENU_WIDTH - 4;
-    if (y + MENU_HEIGHT > vh) y = event.clientY - MENU_HEIGHT - 4;
+    if (x + MENU_WIDTH > viewportWidth) x = event.clientX - MENU_WIDTH - 4;
+    if (y + MENU_HEIGHT > viewportHeight) y = event.clientY - MENU_HEIGHT - 4;
     menu = { visible: true, sessionPath, x, y };
   }
 
   function closeMenu() {
     menu = { ...menu, visible: false };
-  }
-
-  function startRename(sessionPath: string) {
-    const session = sessions.find(s => s.path === sessionPath);
-    if (!session) return;
-    editingPath = sessionPath;
-    editingName = session.name;
-    closeMenu();
-    queueMicrotask(() => {
-      editInputRef?.focus();
-      editInputRef?.select();
-    });
-  }
-
-  function confirmRename() {
-    const name = editingName.trim();
-    if (editingPath && name) {
-      onRename({ sessionPath: editingPath, name });
-    }
-    editingPath = null;
-    editingName = "";
-  }
-
-  function cancelRename() {
-    editingPath = null;
-    editingName = "";
   }
 
   function handleDelete(sessionPath: string) {
@@ -313,40 +219,44 @@
   }
 
   function handleSessionSelect(sessionPath: string, closeModal = false) {
-    if (editingPath === sessionPath) return;
     onSelect(sessionPath);
     if (closeModal) closeOlderSessions();
   }
 
   function handleWorkspaceNewSession(workspace: WorkspaceGroup) {
-    if (workspace.path === "Unknown workspace") return;
     closeMenu();
     onNewSession(workspace.path);
   }
 
   // Effects
   $effect(() => {
-    sessions.map(s => s.path).join(",");
+    workspaces.map(workspace => workspace.path).join(",");
+    Object.values(workspaceSessions)
+      .flat()
+      .map(session => session.path)
+      .join(",");
     queueMicrotask(closeMenu);
   });
 
   $effect(() => {
-    const as = activeSessionPath
-      ? sessions.find(s => s.path === activeSessionPath)
-      : undefined;
+    const activeWorkspace = activeWorkspacePath
+      ? workspaceGroups.find(workspace => workspace.path === activeWorkspacePath)
+      : null;
 
-    if (as) {
-      hasAutoExpandedInitialWorkspace = true;
-      if (as.path === lastAutoExpandedSessionPath) return;
-      lastAutoExpandedSessionPath = as.path;
-      expandWorkspace(getWorkspaceId(as));
+    if (!activeWorkspace) {
+      lastAutoExpandedWorkspacePath = null;
       return;
     }
 
-    lastAutoExpandedSessionPath = null;
-    if (sessions.length > 0 && !hasAutoExpandedInitialWorkspace) {
-      hasAutoExpandedInitialWorkspace = true;
-      expandWorkspace(getWorkspaceId(sessions[0]));
+    if (activeWorkspace.path === lastAutoExpandedWorkspacePath) return;
+    lastAutoExpandedWorkspacePath = activeWorkspace.path;
+    expandWorkspace(activeWorkspace.id);
+  });
+
+  $effect(() => {
+    for (const workspace of workspaceGroups) {
+      if (!workspace.isExpanded || workspace.isLoaded || workspace.isLoading) continue;
+      onExpandWorkspace(workspace.path);
     }
   });
 </script>
@@ -403,8 +313,8 @@
               type="button"
               aria-label={`New session in ${workspace.name}`}
               title={`New session in ${workspace.path}`}
-              onclick={(e) => {
-                e.stopPropagation();
+              onclick={(event) => {
+                event.stopPropagation();
                 handleWorkspaceNewSession(workspace);
               }}
             >
@@ -414,38 +324,26 @@
 
           {#if workspace.isExpanded}
             <div class="session-list">
-              {#if workspace.actualSessions.length === 0}
+              {#if !workspace.isLoaded}
+                <p class="workspace-empty">Loading sessions...</p>
+              {:else if workspace.sessions.length === 0}
                 <p class="workspace-empty">No sessions yet</p>
               {/if}
-              {#each workspace.recentSessions as s (s.path)}
+
+              {#each workspace.recentSessions as session (session.path)}
                 <div
                   class="rail-item"
                   role="button"
                   tabindex="0"
-                  class:active={s.path === activeSessionPath}
-                  class:running={isSessionRunning(s.path)}
-                  onclick={() => handleSessionSelect(s.path)}
-                  onkeydown={(e) => e.key === "Enter" && handleSessionSelect(s.path)}
-                  oncontextmenu={(e) => openMenu(e, s.path)}
+                  class:active={session.path === activeSessionPath}
+                  class:running={isSessionRunning(session.path)}
+                  onclick={() => handleSessionSelect(session.path)}
+                  onkeydown={(event) => event.key === "Enter" && handleSessionSelect(session.path)}
+                  oncontextmenu={(event) => openMenu(event, session.path)}
                 >
                   <span class="item-indicator"></span>
-                  {#if editingPath === s.path}
-                    <input
-                      bind:this={editInputRef}
-                      bind:value={editingName}
-                      class="item-input"
-                      type="text"
-                      onkeydown={(e) => {
-                        if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
-                        if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
-                      }}
-                      onblur={confirmRename}
-                      onclick={(e) => e.stopPropagation()}
-                    />
-                  {:else}
-                    <span class="item-label">{s.name}</span>
-                  {/if}
-                  {#if isSessionRunning(s.path)}
+                  <span class="item-label">{session.name}</span>
+                  {#if isSessionRunning(session.path)}
                     <span class="item-status" role="status" aria-label="Agent running" title="Agent running">
                       <span class="item-status-dot" aria-hidden="true"></span>
                     </span>
@@ -479,7 +377,7 @@
   <div
     class="older-modal-overlay"
     onclick={handleOlderSessionsOverlayClick}
-    onkeydown={(e) => e.key === "Escape" && closeOlderSessions()}
+    onkeydown={(event) => event.key === "Escape" && closeOlderSessions()}
   >
     <section
       class="older-modal"
@@ -500,37 +398,22 @@
       </label>
 
       <div class="older-modal-list">
-        {#each activeOlderWorkspace.filteredRemainingSessions as s (s.path)}
+        {#each activeOlderWorkspace.filteredRemainingSessions as session (session.path)}
           <div
             class="modal-session-item"
             role="button"
             tabindex="0"
-            class:active={s.path === activeSessionPath}
-            class:running={isSessionRunning(s.path)}
-            onclick={() => handleSessionSelect(s.path, true)}
-            onkeydown={(e) => e.key === "Enter" && handleSessionSelect(s.path, true)}
-            oncontextmenu={(e) => openMenu(e, s.path)}
+            class:active={session.path === activeSessionPath}
+            class:running={isSessionRunning(session.path)}
+            onclick={() => handleSessionSelect(session.path, true)}
+            onkeydown={(event) => event.key === "Enter" && handleSessionSelect(session.path, true)}
+            oncontextmenu={(event) => openMenu(event, session.path)}
           >
             <span class="item-indicator"></span>
             <span class="modal-session-copy">
-              {#if editingPath === s.path}
-                <input
-                  bind:this={editInputRef}
-                  bind:value={editingName}
-                  class="item-input modal-item-input"
-                  type="text"
-                  onkeydown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); confirmRename(); }
-                    if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
-                  }}
-                  onblur={confirmRename}
-                  onclick={(e) => e.stopPropagation()}
-                />
-              {:else}
-                <span class="modal-session-name">{s.name}</span>
-              {/if}
+              <span class="modal-session-name">{session.name}</span>
             </span>
-            {#if isSessionRunning(s.path)}
+            {#if isSessionRunning(session.path)}
               <span class="item-status" role="status" aria-label="Agent running" title="Agent running">
                 <span class="item-status-dot" aria-hidden="true"></span>
               </span>
@@ -542,13 +425,14 @@
           <button
             class="modal-load-more"
             type="button"
-            onclick={() => loadMoreOlderSessions(activeOlderWorkspace!)}
+            disabled={activeOlderWorkspace.isLoading}
+            onclick={() => loadMoreOlderSessions(activeOlderWorkspace)}
           >
-            Load more
+            {activeOlderWorkspace.isLoading ? "Loading..." : "Load more"}
           </button>
         {/if}
 
-        {#if activeOlderWorkspace.filteredRemainingSessions.length === 0}
+        {#if !activeOlderWorkspace.isLoading && activeOlderWorkspace.filteredRemainingSessions.length === 0}
           <p class="modal-empty">No matching sessions</p>
         {/if}
       </div>
@@ -560,18 +444,13 @@
   <div
     class="menu-overlay"
     onclick={closeMenu}
-    oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); closeMenu(); }}
+    oncontextmenu={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu();
+    }}
   >
-    <div class="menu-panel show" style={menuPanelStyle} onclick={(e) => e.stopPropagation()}>
-      <button
-        class="menu-item"
-        type="button"
-        onclick={() => menu.sessionPath && startRename(menu.sessionPath)}
-      >
-        <Pencil class="menu-icon" aria-hidden="true" size={13} />
-        <span>Rename</span>
-      </button>
-      <div class="menu-divider"></div>
+    <div class="menu-panel show" style={menuPanelStyle} onclick={(event) => event.stopPropagation()}>
       <button
         class="menu-item danger"
         type="button"
@@ -801,32 +680,14 @@
     background: var(--text);
   }
 
-  .rail-item.running .item-indicator {
+  .rail-item.running .item-indicator,
+  .modal-session-item.running .item-indicator {
     background: var(--accent);
   }
 
   .item-label {
     flex: 1 1 auto;
     min-width: 0;
-  }
-
-  .item-input {
-    flex: 1 1 auto;
-    min-width: 0;
-    height: 24px;
-    padding: 0 6px;
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    background: var(--panel);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.82rem;
-    outline: none;
-  }
-
-  .item-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
   .item-status {
@@ -971,10 +832,6 @@
     color: var(--text);
   }
 
-  .modal-session-item.running .item-indicator {
-    background: var(--accent);
-  }
-
   .modal-session-copy {
     flex: 1 1 auto;
     min-width: 0;
@@ -988,12 +845,6 @@
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .modal-item-input {
-    width: 100%;
-    flex: 0 0 auto;
-    font-size: 0.86rem;
   }
 
   .modal-load-more {
@@ -1011,6 +862,11 @@
   .modal-load-more:hover {
     background: var(--surface-hover);
     color: var(--text);
+  }
+
+  .modal-load-more:disabled {
+    opacity: 0.65;
+    cursor: progress;
   }
 
   .modal-empty {
@@ -1093,13 +949,6 @@
     opacity: 1;
   }
 
-  .menu-divider {
-    height: 1px;
-    margin: 1px 6px;
-    background: var(--border);
-    opacity: 0.6;
-  }
-
   @keyframes session-running-blink {
     0%,
     100% {
@@ -1111,7 +960,6 @@
       transform: scale(0.86);
     }
   }
-
 
   @media (max-width: 700px) {
     .older-modal-overlay {

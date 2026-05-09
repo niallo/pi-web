@@ -29,6 +29,13 @@ export interface RpcWorkspaceEntry {
   kind: "file" | "directory";
 }
 
+export interface RpcWorkspaceSummary {
+  id: string;
+  name: string;
+  path: string;
+  updatedAt?: string;
+}
+
 export interface RpcWorkspaceFile {
   path: string;
   absolutePath: string;
@@ -285,7 +292,6 @@ export interface RpcCommandMap {
   fork: { entryId: string };
   get_fork_messages: {};
   get_last_assistant_text: {};
-  set_session_name: { name: string; sessionPath?: string };
   delete_session: { sessionPath: string };
 
   /** Messages / Commands */
@@ -298,12 +304,12 @@ export interface RpcCommandMap {
   get_commands: {};
 
   /** Discovery */
+  list_workspaces: {};
   list_sessions: {
-    workspacePath?: string;
+    workspacePath: string;
     limit?: number;
     cursor?: string;
     query?: string;
-    scope?: "workspace" | "workspaces";
     includeActive?: boolean;
     merge?: "replace" | "append";
   };
@@ -625,10 +631,10 @@ export interface RpcResponseMap {
   fork: { text: string; cancelled: boolean };
   get_fork_messages: { messages: Array<{ entryId: string; text: string }> };
   get_last_assistant_text: { text: string | null };
-  set_session_name: void;
   delete_session: void;
   get_messages: RpcTranscriptPage & { direction: "latest" | "older" };
   get_commands: { commands: RpcSlashCommand[] };
+  list_workspaces: { workspaces: RpcWorkspaceSummary[] };
   list_sessions: {
     sessions: Array<{
       id: string;
@@ -640,11 +646,9 @@ export interface RpcResponseMap {
       workspaceId?: string;
       workspaceName?: string;
       workspacePath?: string;
-      isWorkspacePlaceholder?: boolean;
     }>;
     workspacePath?: string;
     nextCursor?: string;
-    workspaceCursors?: Record<string, string | null>;
     merge?: "replace" | "append";
   };
   list_tree_entries: { entries: RpcTreeEntry[]; sessionPath?: string };

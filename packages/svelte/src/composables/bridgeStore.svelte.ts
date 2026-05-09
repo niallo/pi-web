@@ -24,6 +24,7 @@ import type {
   RpcTranscriptSnapshotEvent,
   RpcTranscriptUpsertEvent,
   RpcSessionStatsEvent,
+  RpcWorkspaceSummary,
   ServerMessage,
 } from "@pi-web/bridge/types";
 import {
@@ -70,8 +71,9 @@ export interface SessionEntry {
   workspaceId?: string;
   workspaceName?: string;
   workspacePath?: string;
-  isWorkspacePlaceholder?: boolean;
 }
+
+export type WorkspaceSummary = RpcWorkspaceSummary;
 
 function readFiniteNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -247,7 +249,10 @@ let _sessionState = $state<RpcSessionState | null>(null);
 let _pendingTranscriptConfigEvent = $state<
   (PendingTranscriptSessionEvent & { sessionPath: string | null }) | null
 >(null);
-let _sessions = $state<SessionEntry[]>([]);
+let _workspaces = $state<WorkspaceSummary[]>([]);
+let _workspaceSessions = $state<Record<string, SessionEntry[]>>({});
+let _workspaceSessionLoaded = $state<Record<string, boolean>>({});
+let _workspaceSessionLoading = $state<Record<string, boolean>>({});
 let _treeEntries = $state<TreeEntry[]>([]);
 let _activeTreeSessionPath = $state<string | null>(null);
 let _liveSessionPath = $state<string | null>(null);
@@ -291,7 +296,11 @@ let transcriptHasOlder = $derived(_transcriptHasOlder);
 let transcriptInitialLoading = $derived(_transcriptInitialLoading);
 let transcriptPageLoading = $derived(_transcriptPageLoading);
 let sessionState = $derived(_sessionState);
-let sessions = $derived(_sessions);
+let workspaces = $derived(_workspaces);
+let workspaceSessions = $derived(_workspaceSessions);
+let workspaceSessionLoaded = $derived(_workspaceSessionLoaded);
+let workspaceSessionLoading = $derived(_workspaceSessionLoading);
+let sessions = $derived.by(() => Object.values(_workspaceSessions).flat());
 let treeEntries = $derived(_treeEntries);
 let activeTreeSessionPath = $derived(_activeTreeSessionPath);
 let liveSessionPath = $derived(_liveSessionPath);
@@ -401,7 +410,7 @@ function getDisplayedWorkspacePath(): string | null {
   const dsp = getDisplayedSessionPath();
   if (!dsp) return null;
 
-  const ms = _sessions.find(s => s.path === dsp);
+  const ms = sessions.find(s => s.path === dsp);
   return ms?.workspacePath?.trim() ?? ms?.workspaceId?.trim() ?? null;
 }
 
@@ -572,6 +581,121 @@ function resetGitRepoState() {
   gitRepoStateRequest = null;
 }
 
+function workspaceDisplayName(workspacePath: string): string {
+  const parts = workspacePath.split(/[\\/]/).filter(Boolean);
+  return parts.at(-1) ?? workspacePath;
+}
+
+function workspaceUpdatedAtValue(updatedAt?: string): number {
+  const parsed = Date.parse(updatedAt ?? "");
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+}
+
+function compareWorkspaceSummaries(
+  left: WorkspaceSummary,
+  right: WorkspaceSummary,
+): number {
+  const updatedAtDelta =
+    workspaceUpdatedAtValue(right.updatedAt) -
+    workspaceUpdatedAtValue(left.updatedAt);
+  if (updatedAtDelta !== 0) return updatedAtDelta;
+
+  const nameDelta = left.name.localeCompare(right.name);
+  if (nameDelta !== 0) return nameDelta;
+  return left.path.localeCompare(right.path);
+}
+
+function normalizeWorkspaceSummary(value: unknown): WorkspaceSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Partial<WorkspaceSummary>;
+  if (typeof data.path !== "string") return null;
+
+  const path = data.path.trim();
+  if (!path) return null;
+
+  return {
+    id: typeof data.id === "string" && data.id.trim() ? data.id : path,
+    name:
+      typeof data.name === "string" && data.name.trim()
+        ? data.name
+        : workspaceDisplayName(path),
+    path,
+    updatedAt:
+      typeof data.updatedAt === "string" && data.updatedAt.trim()
+        ? data.updatedAt
+        : undefined,
+  };
+}
+
+function ensureWorkspaceSummary(
+  workspacePath?: string | null,
+  workspaceName?: string | null,
+  updatedAt?: string | null,
+) {
+  const path = workspacePath?.trim();
+  if (!path) return;
+  const existing = _workspaces.find(workspace => workspace.path === path);
+  const nextUpdatedAt =
+    workspaceUpdatedAtValue(updatedAt ?? undefined) >=
+    workspaceUpdatedAtValue(existing?.updatedAt)
+      ? (updatedAt ?? undefined)
+      : existing?.updatedAt;
+  const nextWorkspace: WorkspaceSummary = {
+    id: existing?.id ?? path,
+    name: workspaceName?.trim() || existing?.name || workspaceDisplayName(path),
+    path,
+    updatedAt: nextUpdatedAt,
+  };
+
+  _workspaces = existing
+    ? _workspaces
+        .map(workspace => (workspace.path === path ? nextWorkspace : workspace))
+        .sort(compareWorkspaceSummaries)
+    : [..._workspaces, nextWorkspace].sort(compareWorkspaceSummaries);
+}
+
+function setWorkspaceSessions(
+  workspacePath: string,
+  entries: SessionEntry[],
+  mergeMode: "replace" | "append" = "replace",
+) {
+  _workspaceSessions = {
+    ..._workspaceSessions,
+    [workspacePath]:
+      mergeMode === "append"
+        ? mergeSessionEntries(_workspaceSessions[workspacePath] ?? [], entries)
+        : [...entries].sort(compareSessionEntries),
+  };
+}
+
+function setWorkspaceSessionLoading(workspacePath: string, loading: boolean) {
+  _workspaceSessionLoading = {
+    ..._workspaceSessionLoading,
+    [workspacePath]: loading,
+  };
+}
+
+function markWorkspaceSessionLoaded(workspacePath: string) {
+  _workspaceSessionLoaded = {
+    ..._workspaceSessionLoaded,
+    [workspacePath]: true,
+  };
+}
+
+function removeSessionFromWorkspaceSessions(sessionPath: string) {
+  const nextSessions: Record<string, SessionEntry[]> = {};
+  for (const [workspacePath, entries] of Object.entries(_workspaceSessions)) {
+    nextSessions[workspacePath] = entries.filter(
+      entry => entry.path !== sessionPath,
+    );
+  }
+  _workspaceSessions = nextSessions;
+
+  const nextRunning = new Set(_runningSessionPaths);
+  nextRunning.delete(sessionPath);
+  _runningSessionPaths = [...nextRunning];
+}
+
 function setSessionRunning(sessionPath: string | null, isRunning: boolean) {
   if (!sessionPath) return;
 
@@ -583,13 +707,34 @@ function setSessionRunning(sessionPath: string | null, isRunning: boolean) {
   }
   _runningSessionPaths = [...next];
 
-  _sessions = _sessions.map(session =>
-    session.path === sessionPath ? { ...session, isRunning } : session,
-  );
+  const nextWorkspaceSessions: Record<string, SessionEntry[]> = {};
+  for (const [workspacePath, entries] of Object.entries(_workspaceSessions)) {
+    nextWorkspaceSessions[workspacePath] = entries.map(session =>
+      session.path === sessionPath ? { ...session, isRunning } : session,
+    );
+  }
+  _workspaceSessions = nextWorkspaceSessions;
 }
 
 function syncRunningSessionsFromEntries(entries: readonly SessionEntry[]) {
-  _runningSessionPaths = entries.filter(s => s.isRunning).map(s => s.path);
+  const nextRunning = new Set(_runningSessionPaths);
+  for (const entry of entries) {
+    nextRunning.delete(entry.path);
+    if (entry.isRunning) nextRunning.add(entry.path);
+  }
+  _runningSessionPaths = [...nextRunning];
+}
+
+function compareSessionEntries(
+  left: SessionEntry,
+  right: SessionEntry,
+): number {
+  const leftTime = Date.parse(left.updatedAt ?? left.timestamp ?? "");
+  const rightTime = Date.parse(right.updatedAt ?? right.timestamp ?? "");
+  const delta =
+    (Number.isFinite(rightTime) ? rightTime : Number.NEGATIVE_INFINITY) -
+    (Number.isFinite(leftTime) ? leftTime : Number.NEGATIVE_INFINITY);
+  return delta || right.path.localeCompare(left.path);
 }
 
 function mergeSessionEntries(
@@ -600,14 +745,7 @@ function mergeSessionEntries(
   for (const s of incoming) {
     nextByPath.set(s.path, s);
   }
-  return [...nextByPath.values()].sort((a, b) => {
-    const aTime = Date.parse(a.updatedAt ?? a.timestamp ?? "");
-    const bTime = Date.parse(b.updatedAt ?? b.timestamp ?? "");
-    const delta =
-      (Number.isFinite(bTime) ? bTime : Number.NEGATIVE_INFINITY) -
-      (Number.isFinite(aTime) ? aTime : Number.NEGATIVE_INFINITY);
-    return delta || b.path.localeCompare(a.path);
-  });
+  return [...nextByPath.values()].sort(compareSessionEntries);
 }
 
 function clearPendingTranscriptConfigEvent() {
@@ -898,6 +1036,9 @@ function applySessionSnapshotResponse(
     });
   } else if (data.sessionPath) {
     _activeTreeSessionPath = data.sessionPath;
+  }
+  if (data.workspacePath) {
+    ensureWorkspaceSummary(data.workspacePath);
   }
   if (data.sessionId) {
     _sessionState = {
@@ -1303,24 +1444,30 @@ export async function loadWorkspaceSessions(options: {
   query?: string;
   merge?: "replace" | "append";
 }): Promise<RpcResponse> {
-  return sendCommand({
-    type: "list_sessions",
-    scope: "workspace",
-    workspacePath: options.workspacePath,
-    cursor: options.cursor ?? undefined,
-    limit: options.limit ?? 50,
-    query: options.query,
-    includeActive: true,
-    merge: options.merge ?? "append",
-  });
+  setWorkspaceSessionLoading(options.workspacePath, true);
+  try {
+    const resp = await sendCommand({
+      type: "list_sessions",
+      workspacePath: options.workspacePath,
+      cursor: options.cursor ?? undefined,
+      limit: options.limit ?? 50,
+      query: options.query,
+      includeActive: true,
+      merge: options.merge ?? "append",
+    });
+    if (!resp.success) {
+      setWorkspaceSessionLoading(options.workspacePath, false);
+    }
+    return resp;
+  } catch (error) {
+    setWorkspaceSessionLoading(options.workspacePath, false);
+    throw error;
+  }
 }
 
-export async function refreshWorkspaceSessions(): Promise<RpcResponse> {
+export async function refreshWorkspaces(): Promise<RpcResponse> {
   return sendCommand({
-    type: "list_sessions",
-    scope: "workspaces",
-    limit: 10,
-    includeActive: true,
+    type: "list_workspaces",
   });
 }
 
@@ -1392,15 +1539,10 @@ export async function setAutoCompactionEnabled(enabled: boolean) {
   return resp;
 }
 
-export async function renameSession(
-  sessionPath: string,
-  name: string,
-): Promise<RpcResponse> {
-  return sendCommand({ type: "set_session_name", sessionPath, name });
-}
-
 export async function deleteSession(sessionPath: string): Promise<RpcResponse> {
-  return sendCommand({ type: "delete_session", sessionPath });
+  const resp = await sendCommand({ type: "delete_session", sessionPath });
+  if (resp.success) removeSessionFromWorkspaceSessions(sessionPath);
+  return resp;
 }
 
 export function respondToUIRequest(payload: RpcExtensionUIResponse) {
@@ -1474,6 +1616,9 @@ function handleResponse(payload: RpcResponse) {
                   _sessionState?.workspacePath ?? data.workspacePath,
               }
             : data;
+          if (data.workspacePath) {
+            ensureWorkspaceSummary(data.workspacePath);
+          }
           updateCurrentModel(data.model);
           _currentThinkingLevel = normalizeThinkingLevel(data.thinkingLevel);
           setSessionRunning(data.sessionFile ?? null, data.isStreaming);
@@ -1488,41 +1633,54 @@ function handleResponse(payload: RpcResponse) {
         }
         break;
       }
+      case "list_workspaces": {
+        const data = payload.data as
+          | { workspaces?: WorkspaceSummary[] }
+          | undefined;
+        const nextWorkspaces = Array.isArray(data?.workspaces)
+          ? data.workspaces
+              .map(workspace => normalizeWorkspaceSummary(workspace))
+              .filter(
+                (workspace): workspace is WorkspaceSummary =>
+                  workspace !== null,
+              )
+          : [];
+        for (const workspace of nextWorkspaces) {
+          ensureWorkspaceSummary(
+            workspace.path,
+            workspace.name,
+            workspace.updatedAt,
+          );
+        }
+        _workspaces = [...nextWorkspaces].sort(compareWorkspaceSummaries);
+        if (_sessionState?.workspacePath) {
+          ensureWorkspaceSummary(_sessionState.workspacePath);
+        }
+        break;
+      }
       case "list_sessions": {
         const data = payload.data as
           | {
               sessions?: SessionEntry[];
               workspacePath?: string;
               nextCursor?: string;
-              workspaceCursors?: Record<string, string | null>;
               merge?: "replace" | "append";
             }
           | undefined;
-        if (Array.isArray(data?.sessions)) {
-          _sessions =
-            data.merge === "append"
-              ? mergeSessionEntries(_sessions, data.sessions)
-              : data.sessions;
-          syncRunningSessionsFromEntries(_sessions);
-
-          if (data.workspaceCursors) {
-            _workspaceSessionCursors = {
-              ..._workspaceSessionCursors,
-              ...data.workspaceCursors,
-            };
-          } else {
-            const wp =
-              data.workspacePath ??
-              data.sessions
-                .map(s => s.workspacePath ?? s.workspaceId)
-                .find(Boolean);
-            if (wp) {
-              _workspaceSessionCursors = {
-                ..._workspaceSessionCursors,
-                [wp]: data.nextCursor ?? null,
-              };
-            }
-          }
+        if (Array.isArray(data?.sessions) && data.workspacePath) {
+          ensureWorkspaceSummary(data.workspacePath);
+          setWorkspaceSessions(
+            data.workspacePath,
+            data.sessions,
+            data.merge ?? "replace",
+          );
+          syncRunningSessionsFromEntries(data.sessions);
+          markWorkspaceSessionLoaded(data.workspacePath);
+          setWorkspaceSessionLoading(data.workspacePath, false);
+          _workspaceSessionCursors = {
+            ..._workspaceSessionCursors,
+            [data.workspacePath]: data.nextCursor ?? null,
+          };
         }
         break;
       }
@@ -1556,7 +1714,16 @@ function handleResponse(payload: RpcResponse) {
           _isStreaming = false;
         }
         setCompactionState(false);
-        sendCommand({ type: "list_sessions" }).catch(() => {});
+        const workspacePath =
+          data?.workspacePath ?? _sessionState?.workspacePath;
+        void refreshWorkspaces().catch(() => {});
+        if (workspacePath) {
+          void loadWorkspaceSessions({
+            workspacePath,
+            limit: 5,
+            merge: "replace",
+          }).catch(() => {});
+        }
         break;
       }
       case "compact": {
@@ -1774,10 +1941,7 @@ async function fetchInitialState() {
   try {
     const bootstrap = [
       sendCommand({
-        type: "list_sessions",
-        scope: "workspaces",
-        limit: 10,
-        includeActive: true,
+        type: "list_workspaces",
       }),
       sendCommand({ type: "get_available_models" }),
       sendCommand({ type: "get_commands" }),
@@ -1831,8 +1995,14 @@ function connect() {
     _remoteCompactionActive = false;
     _reconnectCount++;
     _runningSessionPaths = [];
+    _workspaceSessionLoading = {};
     resetGitRepoState();
-    _sessions = _sessions.map(s => ({ ...s, isRunning: false }));
+    _workspaceSessions = Object.fromEntries(
+      Object.entries(_workspaceSessions).map(([workspacePath, entries]) => [
+        workspacePath,
+        entries.map(entry => ({ ...entry, isRunning: false })),
+      ]),
+    );
     _lastDisconnectReason = event?.reason
       ? `Connection lost: ${event.reason}`
       : "Connection lost";
@@ -1900,6 +2070,18 @@ export function initBridge() {
     },
     get sessionState() {
       return sessionState;
+    },
+    get workspaces() {
+      return workspaces;
+    },
+    get workspaceSessions() {
+      return workspaceSessions;
+    },
+    get workspaceSessionLoaded() {
+      return workspaceSessionLoaded;
+    },
+    get workspaceSessionLoading() {
+      return workspaceSessionLoading;
     },
     get sessions() {
       return sessions;
@@ -2000,7 +2182,7 @@ export function initBridge() {
     fetchWorkspaceEntries,
     readWorkspaceFile,
     loadWorkspaceSessions,
-    refreshWorkspaceSessions,
+    refreshWorkspaces,
     loadGitRepoState,
     switchGitBranch,
     createGitBranch,
@@ -2011,7 +2193,6 @@ export function initBridge() {
     compactSession,
     setThinkingLevel,
     setAutoCompactionEnabled,
-    renameSession,
     deleteSession,
     cancelQueuedMessage,
     editQueuedMessage,
