@@ -539,12 +539,19 @@
   :global(.markdown-body a.markdown-file-ref) {
     color: inherit;
     text-decoration: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   :global(.markdown-body a.markdown-file-ref code) {
     color: color-mix(in srgb, var(--accent) 82%, var(--text));
     border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
     background: color-mix(in srgb, var(--surface-active) 64%, var(--panel-2));
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
     cursor: pointer;
     transition:
       border-color 0.12s ease,
