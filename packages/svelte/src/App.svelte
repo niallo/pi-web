@@ -1025,26 +1025,6 @@
     touch-action: none;
   }
 
-  .rail-resizer::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    width: 2px;
-    transform: translateX(-50%);
-    border-radius: 999px;
-    background: transparent;
-    transition:
-      background 0.15s ease,
-      box-shadow 0.15s ease;
-  }
-
-  .rail-resizer:hover::before,
-  .rail-resizer.active::before {
-    background: color-mix(in srgb, var(--accent) 55%, var(--border-strong));
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus-ring) 70%, transparent);
-  }
 
   .app-shell ::selection {
     background: var(--selection-bg);
@@ -1069,6 +1049,7 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+    background: var(--rail-bg);
   }
 
   .app-body {

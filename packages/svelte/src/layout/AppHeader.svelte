@@ -148,7 +148,8 @@
     height: 44px;
     /*padding: 0 14px;*/
     border-bottom: 1px solid var(--border);
-    background: var(--bg-elevated);
+    border-top-left-radius: 14px;
+    background: var(--bg);
     flex-shrink: 0;
     z-index: 20;
   }
@@ -226,7 +227,7 @@
     padding: 0 7px;
     border-radius: 6px;
     border: none;
-    background: var(--panel);
+    background: transparent;
     font-size: 0.68rem;
     color: var(--text-subtle);
     cursor: pointer;
@@ -294,6 +295,7 @@
     .app-header {
       height: auto;
       padding: calc(env(safe-area-inset-top) + 7px) 11px 9px;
+      border-top-left-radius: 0;
     }
 
     .header-status {

@@ -269,6 +269,7 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+    border-bottom-left-radius: 14px;
     background: var(--bg);
   }
 
@@ -376,6 +377,7 @@
   @media (max-width: 900px) {
     .center-column {
       grid-column: 1;
+      border-bottom-left-radius: 0;
     }
   }
 </style>
