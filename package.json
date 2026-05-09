@@ -47,8 +47,8 @@
     "ws": "^8.20.0"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.74.0",
     "@lobehub/icons-static-svg": "^1.88.0",
-    "@mariozechner/pi-coding-agent": "^0.65.2",
     "@pi-web/bridge": "workspace:*",
     "@types/node": "^24.3.0",
     "@typescript/native-preview": "7.0.0-dev.20260413.1",
@@ -58,7 +58,7 @@
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "engines": {
     "node": ">=20.6.0"
