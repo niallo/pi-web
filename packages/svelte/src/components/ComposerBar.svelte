@@ -34,8 +34,10 @@
     getWorkspaceMentionSuggestions,
     type WorkspaceMentionSuggestion,
   } from "../utils/workspaceMentions";
+  import type { ImageContentBlock } from "../utils/transcript";
   import CommandPalette from "./CommandPalette.svelte";
   import GitBranchDropdown from "./GitBranchDropdown.svelte";
+  import ImageLightbox from "./ImageLightbox.svelte";
   import ModelDropdown from "./ModelDropdown.svelte";
   import ThinkingLevelDropdown from "./ThinkingLevelDropdown.svelte";
   import WorkspaceMentionPalette from "./WorkspaceMentionPalette.svelte";
@@ -152,12 +154,17 @@
   let canAbort = $derived(!isDisabled && isStreaming);
   let showStopButton = $derived(isStreaming && !canSubmit);
   let hasPendingMessages = $derived(pendingMessageCount > 0);
-  let attachmentSummary = $derived.by(() => {
-    if (attachmentNotice) return attachmentNotice;
-    if (!attachments.length) return "";
-    if (attachments.length === 1) return "1 image attached";
-    return `${attachments.length} images attached`;
+  let attachmentSummary = $derived(attachmentNotice ?? "");
+  let lightboxAttachmentIndex = $state(-1);
+  let lightboxImages = $derived.by(() => {
+    return attachments.map<ImageContentBlock>(attachment => ({
+      kind: "image",
+      src: attachment.previewUrl,
+      alt: attachment.name,
+      mimeType: attachment.mimeType,
+    }));
   });
+  let lightboxOpen = $derived(lightboxAttachmentIndex >= 0 && lightboxAttachmentIndex < attachments.length);
 
   let revisionBackup = $state<{
     text: string;
@@ -314,13 +321,43 @@
     }
   }
 
+  function openAttachmentLightbox(index: number) {
+    if (index < 0 || index >= attachments.length) return;
+    lightboxAttachmentIndex = index;
+  }
+
+  function closeAttachmentLightbox() {
+    lightboxAttachmentIndex = -1;
+  }
+
+  function showPreviousAttachmentLightboxImage() {
+    if (attachments.length <= 1 || lightboxAttachmentIndex < 0) return;
+    lightboxAttachmentIndex = (lightboxAttachmentIndex + attachments.length - 1) % attachments.length;
+  }
+
+  function showNextAttachmentLightboxImage() {
+    if (attachments.length <= 1 || lightboxAttachmentIndex < 0) return;
+    lightboxAttachmentIndex = (lightboxAttachmentIndex + 1) % attachments.length;
+  }
+
   function removeAttachment(id: string) {
-    attachments = attachments.filter(a => a.id !== id);
+    const index = attachments.findIndex(a => a.id === id);
+    if (index === -1) return;
+    const nextAttachments = attachments.filter(a => a.id !== id);
+    if (lightboxAttachmentIndex === index) {
+      lightboxAttachmentIndex = nextAttachments.length > 0
+        ? Math.min(index, nextAttachments.length - 1)
+        : -1;
+    } else if (lightboxAttachmentIndex > index) {
+      lightboxAttachmentIndex -= 1;
+    }
+    attachments = nextAttachments;
     if (attachments.length === 0) clearAttachmentNotice();
   }
 
   function clearAttachments() {
     attachments = [];
+    lightboxAttachmentIndex = -1;
     if (fileInputRef) fileInputRef.value = "";
   }
 
@@ -653,19 +690,26 @@
 
       {#if attachments.length > 0}
         <div class="attachment-strip">
-          {#each attachments as attachment (attachment.id)}
+          {#each attachments as attachment, index (attachment.id)}
             <div class="attachment-chip">
-              <img
-                class="attachment-chip-preview"
-                src={attachment.previewUrl}
-                alt={attachment.name}
-              />
-              <div class="attachment-chip-body">
-                <span class="attachment-chip-name">{attachment.name}</span>
-                <span class="attachment-chip-meta">
-                  {formatAttachmentSize(attachment.size)}
-                </span>
-              </div>
+              <button
+                type="button"
+                class="attachment-chip-open"
+                aria-label={`View ${attachment.name}`}
+                onclick={() => openAttachmentLightbox(index)}
+              >
+                <img
+                  class="attachment-chip-preview"
+                  src={attachment.previewUrl}
+                  alt={attachment.name}
+                />
+                <div class="attachment-chip-body">
+                  <span class="attachment-chip-name">{attachment.name}</span>
+                  <span class="attachment-chip-meta">
+                    {formatAttachmentSize(attachment.size)}
+                  </span>
+                </div>
+              </button>
               <button
                 type="button"
                 class="attachment-chip-remove"
@@ -780,6 +824,15 @@
   </div>
 </div>
 
+<ImageLightbox
+  open={lightboxOpen}
+  images={lightboxImages}
+  index={lightboxAttachmentIndex}
+  onClose={closeAttachmentLightbox}
+  onPrevious={showPreviousAttachmentLightboxImage}
+  onNext={showNextAttachmentLightboxImage}
+/>
+
 <style>
   .composer-bar {
     flex-shrink: 0;
@@ -880,6 +933,19 @@
     border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
     border-radius: 14px;
     background: color-mix(in srgb, var(--panel) 74%, transparent);
+  }
+
+  .attachment-chip-open {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: zoom-in;
+    text-align: left;
   }
 
   .attachment-chip-preview {
@@ -987,10 +1053,25 @@
       opacity 0.15s ease;
   }
 
+  .attachment-chip-open:hover .attachment-chip-name,
+  .attachment-chip-open:focus-visible .attachment-chip-name,
+  .attachment-chip-remove:hover,
+  .attach-btn:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .attachment-chip-open:hover .attachment-chip-preview,
+  .attachment-chip-open:focus-visible .attachment-chip-preview,
   .attachment-chip-remove:hover,
   .attach-btn:hover:not(:disabled) {
     background: var(--bg);
-    color: var(--text);
+  }
+
+  .attachment-chip-open:focus-visible,
+  .attachment-chip-remove:focus-visible,
+  .attach-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent) 54%, white 12%);
+    outline-offset: 2px;
   }
 
   .composer-main-row {

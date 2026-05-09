@@ -68,12 +68,17 @@
       role="dialog"
       aria-modal="true"
       aria-label="Image preview"
+      tabindex="-1"
+      onclick={onClose}
     >
       <button
         type="button"
         class="image-lightbox-close"
         aria-label="Close image preview"
-        onclick={onClose}
+        onclick={(event) => {
+          event.stopPropagation();
+          onClose();
+        }}
       >
         <X aria-hidden="true" size={18} />
       </button>
@@ -83,7 +88,10 @@
           type="button"
           class="image-lightbox-nav prev"
           aria-label="Previous image"
-          onclick={onPrevious}
+          onclick={(event) => {
+            event.stopPropagation();
+            onPrevious();
+          }}
         >
           <ChevronLeft aria-hidden="true" size={18} />
         </button>
@@ -91,7 +99,7 @@
 
       <div class="image-lightbox-viewport">
         <figure class="image-lightbox-figure">
-          <div class="image-lightbox-frame">
+          <div class="image-lightbox-frame" onclick={(event) => event.stopPropagation()}>
             <img
               class="image-lightbox-image"
               src={currentImage.src}
@@ -106,7 +114,10 @@
           type="button"
           class="image-lightbox-nav next"
           aria-label="Next image"
-          onclick={onNext}
+          onclick={(event) => {
+            event.stopPropagation();
+            onNext();
+          }}
         >
           <ChevronRight aria-hidden="true" size={18} />
         </button>
@@ -115,6 +126,7 @@
       <div
         class="image-lightbox-footer"
         class:empty-footer={!caption && !hasMultipleImages}
+        onclick={(event) => event.stopPropagation()}
       >
         {#if caption}
           <span class="image-lightbox-caption">{caption}</span>
