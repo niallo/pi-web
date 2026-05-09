@@ -429,7 +429,17 @@
   }
 
   function handleRefreshWorkspaces() {
-    bridge.refreshWorkspaces().catch(() => {});
+    bridge.refreshWorkspaces().then(() => {
+      for (const workspacePath of Object.keys(bridge.workspaceSessionLoaded)) {
+        if (bridge.workspaceSessionLoaded[workspacePath]) {
+          bridge.loadWorkspaceSessions({
+            workspacePath,
+            limit: 5,
+            merge: "replace",
+          }).catch(() => {});
+        }
+      }
+    }).catch(() => {});
   }
 
   function handleExpandWorkspace(workspacePath: string) {
