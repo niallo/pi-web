@@ -1,10 +1,5 @@
 <script lang="ts">
-  import {
-    FileDiff as FileDiffRenderer,
-    processFile,
-    registerCustomTheme,
-    type FileDiffMetadata,
-  } from "@pierre/diffs";
+  import type { FileDiffMetadata } from "@pierre/diffs";
   import { onMount } from "svelte";
   import {
     readThemeModeFromDom,
@@ -14,8 +9,11 @@
 
   type DiffEdit = { oldText: string; newText: string };
   type ReadWorkspaceFile = (path: string) => Promise<{ content: string }>;
+  type DiffsModule = typeof import("@pierre/diffs");
+  type FileDiffRenderer = InstanceType<DiffsModule["FileDiff"]>;
 
   const REGISTERED_DIFF_THEMES = new Set<string>();
+  let diffsModulePromise: Promise<DiffsModule> | undefined;
 
   let {
     diff = "",
@@ -37,6 +35,7 @@
   let diffRenderer: FileDiffRenderer | undefined;
   let themeObserver: MutationObserver | undefined;
   let currentFileRequestId = 0;
+  let renderRequestId = 0;
 
   let normalizedDiff = $derived(diff.replace(/\r/g, "").trim());
   let syntheticPatch = $derived(
@@ -128,7 +127,14 @@
     `;
   }
 
-  function ensureDiffThemesRegistered() {
+  function loadDiffsModule() {
+    diffsModulePromise ??= import("@pierre/diffs");
+    return diffsModulePromise;
+  }
+
+  function ensureDiffThemesRegistered(
+    registerCustomTheme: DiffsModule["registerCustomTheme"],
+  ) {
     const pair = readThemePairFromDom();
     const darkName = `pi-web-diff-${pair.dark.id}`;
     const lightName = `pi-web-diff-${pair.light.id}`;
@@ -151,14 +157,14 @@
     return { dark: darkName, light: lightName };
   }
 
-  function diffOptions() {
+  function diffOptions(registerCustomTheme: DiffsModule["registerCustomTheme"]) {
     return {
       diffStyle: "unified" as const,
       diffIndicators: "none" as const,
       disableFileHeader: true,
       hunkSeparators: "simple" as const,
       overflow: "scroll" as const,
-      theme: ensureDiffThemesRegistered(),
+      theme: ensureDiffThemesRegistered(registerCustomTheme),
       themeType: readThemeModeFromDom(),
       unsafeCSS: themedUnsafeCss(),
     };
@@ -410,7 +416,10 @@
     return lines.join("\n");
   }
 
-  function parseDiffText(patchText: string): FileDiffMetadata {
+  function parseDiffText(
+    patchText: string,
+    processFile: DiffsModule["processFile"],
+  ): FileDiffMetadata {
     const candidates: string[] = [];
     if (looksLikeNumberedEditDiff(patchText)) {
       candidates.push(numberedEditDiffToPatch(patchText));
@@ -442,14 +451,19 @@
     hasRenderedDiff = false;
   }
 
-  function createDiffRenderer() {
+  function createDiffRenderer(
+    FileDiff: DiffsModule["FileDiff"],
+    registerCustomTheme: DiffsModule["registerCustomTheme"],
+  ) {
     clearRenderedDiff();
-    diffRenderer = new FileDiffRenderer(diffOptions(), undefined, true);
+    diffRenderer = new FileDiff(diffOptions(registerCustomTheme), undefined, true);
     return diffRenderer;
   }
 
-  function renderDiff() {
+  async function renderDiff() {
     if (!host) return;
+
+    const requestId = ++renderRequestId;
 
     if (!fallbackText) {
       clearRenderedDiff();
@@ -461,8 +475,13 @@
     loading = true;
 
     try {
-      const fileDiff = parseDiffText(normalizedDiff);
-      const renderer = createDiffRenderer();
+      const diffs = await loadDiffsModule();
+      if (requestId !== renderRequestId || !host) return;
+
+      const fileDiff = parseDiffText(normalizedDiff, diffs.processFile);
+      const renderer = createDiffRenderer(diffs.FileDiff, diffs.registerCustomTheme);
+      if (requestId !== renderRequestId || !host) return;
+
       renderer.render({
         fileDiff,
         fileContainer: host,
@@ -475,7 +494,7 @@
       renderError =
         error instanceof Error ? error.message : "Failed to render diff";
     } finally {
-      loading = false;
+      if (requestId === renderRequestId) loading = false;
     }
   }
 
@@ -531,6 +550,7 @@
 
     return () => {
       themeObserver?.disconnect();
+      renderRequestId += 1;
       clearRenderedDiff();
     };
   });
