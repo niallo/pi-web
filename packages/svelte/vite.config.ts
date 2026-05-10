@@ -2,8 +2,26 @@ import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
 
+function dropPierreDiffThemes() {
+  return {
+    name: "drop-pierre-diff-themes",
+    transform(code: string, id: string) {
+      if (
+        !id.includes("@pierre/diffs/dist/highlighter/shared_highlighter.js")
+      ) {
+        return;
+      }
+
+      return code.replace(
+        /registerCustomTheme\("pierre-dark", async \(\) => \{[\s\S]*?\n\}\);\nregisterCustomTheme\("pierre-light", async \(\) => \{[\s\S]*?\n\}\);\n?/,
+        "",
+      );
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [dropPierreDiffThemes(), svelte()],
   resolve: {
     alias: [
       {
