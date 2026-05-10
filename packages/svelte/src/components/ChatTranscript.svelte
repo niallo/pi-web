@@ -1229,6 +1229,10 @@
     max-height: 360px;
   }
 
+  :global(.app-shell[data-theme-mode="dark"]) .tool-inline-code-panel :global(pre.shiki) {
+    background-color: var(--tool-output-bg) !important;
+  }
+
   .tool-inline-command-output {
     padding-bottom: 6px;
     margin-bottom: 8px;
