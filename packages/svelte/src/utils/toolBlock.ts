@@ -262,8 +262,62 @@ function formatBashCommand(command: string | undefined): string | undefined {
 function blockResultDiff(
   resultDetails: JsonValue | undefined,
 ): string | undefined {
-  const details = asRecord(resultDetails);
-  return stringValue(details, "diff");
+  return findDiffString(resultDetails, 0);
+}
+
+function findDiffString(
+  value: JsonValue | undefined,
+  depth: number,
+): string | undefined {
+  if (depth > 3 || value === undefined || value === null) return undefined;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+      try {
+        return findDiffString(JSON.parse(trimmed) as JsonValue, depth + 1);
+      } catch {
+        // Fall through and treat the string itself as a possible diff.
+      }
+    }
+
+    return looksLikeDiffString(trimmed) ? trimmed : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const diff = findDiffString(item, depth + 1);
+      if (diff) return diff;
+    }
+    return undefined;
+  }
+
+  const details = asRecord(value);
+  if (!details) return undefined;
+
+  for (const key of ["diff", "patch", "unifiedDiff"]) {
+    const diff = findDiffString(details[key], depth + 1);
+    if (diff) return diff;
+  }
+
+  for (const key of ["details", "result", "data"]) {
+    const diff = findDiffString(details[key], depth + 1);
+    if (diff) return diff;
+  }
+
+  return undefined;
+}
+
+function looksLikeDiffString(value: string): boolean {
+  return (
+    value.startsWith("--- ") ||
+    value.startsWith("+++ ") ||
+    value.startsWith("@@ ") ||
+    value.includes("\n@@ ") ||
+    /^[ +-]\s*\d+\s/m.test(value)
+  );
 }
 
 function toolResultText(block: ToolContentBlock): string {

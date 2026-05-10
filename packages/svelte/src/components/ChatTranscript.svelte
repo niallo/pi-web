@@ -43,6 +43,7 @@
     onLoadOlder = () => {},
     onRevise = (_: { entryId: string; text: string; preview: string; hasImages: boolean; images: RpcImageContent[] }) => {},
     onOpenFileReference = (_: { path: string; lineNumber: number }) => {},
+    readWorkspaceFile,
   }: {
     sessionPath?: string | null;
     messages?: readonly TranscriptEntry[];
@@ -57,6 +58,7 @@
     onLoadOlder?: () => void;
     onRevise?: (payload: { entryId: string; text: string; preview: string; hasImages: boolean; images: RpcImageContent[] }) => void;
     onOpenFileReference?: (payload: { path: string; lineNumber: number }) => void;
+    readWorkspaceFile?: (path: string) => Promise<{ content: string }>;
   } = $props();
 
   // ---- DOM refs ----
@@ -640,6 +642,7 @@
                                 diff={blockState.toolBlockDetail(block).text || ""}
                                 path={blockState.toolBlockDetail(block).path}
                                 edits={blockState.toolBlockDetail(block).edits || []}
+                                {readWorkspaceFile}
                               />
                             {:else if blockState.toolBlockDetail(block).kind === "code"}
                               <div class="tool-inline-code-panel">

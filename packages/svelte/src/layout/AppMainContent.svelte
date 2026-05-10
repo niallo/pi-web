@@ -8,6 +8,7 @@
     RpcSlashCommand,
     RpcThinkingLevel,
     RpcWorkspaceEntry,
+    RpcWorkspaceFile,
   } from "@pi-web/bridge/types";
   import ChatTranscript from "../components/ChatTranscript.svelte";
   import CompatWarning from "../components/CompatWarning.svelte";
@@ -84,6 +85,7 @@
     onCancelQueued = (_: number) => {},
     onEditQueued = (_: number) => {},
     onOpenFileReference = (_: { path: string; lineNumber: number }) => {},
+    readWorkspaceFile = (_: string) => Promise.reject(new Error("Workspace file reader unavailable")),
   }: {
     compatWarningVisible?: boolean;
     statusEntries?: Record<string, string>;
@@ -151,6 +153,7 @@
     onCancelQueued?: (index: number) => void;
     onEditQueued?: (index: number) => void;
     onOpenFileReference?: (payload: { path: string; lineNumber: number }) => void;
+    readWorkspaceFile?: (path: string) => Promise<RpcWorkspaceFile>;
   } = $props();
 
   let chatTranscriptRef: ChatTranscript | null = $state(null);
@@ -186,6 +189,7 @@
     onLoadOlder={onLoadOlderTranscript}
     onRevise={onReviseMessage}
     onOpenFileReference={onOpenFileReference}
+    {readWorkspaceFile}
   />
 
   {#if queuedUserMessages.length > 0}

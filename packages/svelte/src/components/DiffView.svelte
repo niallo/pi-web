@@ -1,10 +1,10 @@
 <script lang="ts">
   import {
+    FileDiff as FileDiffRenderer,
     processFile,
     registerCustomTheme,
     type FileDiffMetadata,
   } from "@pierre/diffs";
-  import { preloadFileDiff } from "@pierre/diffs/ssr";
   import { onMount } from "svelte";
   import {
     readThemeModeFromDom,
@@ -13,6 +13,7 @@
   } from "../themes";
 
   type DiffEdit = { oldText: string; newText: string };
+  type ReadWorkspaceFile = (path: string) => Promise<{ content: string }>;
 
   const REGISTERED_DIFF_THEMES = new Set<string>();
 
@@ -20,23 +21,31 @@
     diff = "",
     path,
     edits = [],
+    readWorkspaceFile,
   }: {
     diff?: string;
     path?: string;
     edits?: DiffEdit[];
+    readWorkspaceFile?: ReadWorkspaceFile;
   } = $props();
 
-  let host = $state<HTMLDivElement | null>(null);
-  let renderedHtml = $state("");
+  let host = $state<HTMLElement | null>(null);
+  let hasRenderedDiff = $state(false);
   let renderError = $state("");
   let loading = $state(false);
-  let renderVersion = 0;
+  let currentFileContent = $state<string | null>(null);
+  let diffRenderer: FileDiffRenderer | undefined;
   let themeObserver: MutationObserver | undefined;
+  let currentFileRequestId = 0;
 
   let normalizedDiff = $derived(diff.replace(/\r/g, "").trim());
-  let syntheticPatch = $derived(synthesizePatchFromEdits(edits));
+  let syntheticPatch = $derived(
+    synthesizePatchFromEdits(edits, currentFileContent),
+  );
   let fallbackText = $derived(
-    looksLikePatch(normalizedDiff) ? normalizedDiff : syntheticPatch || normalizedDiff,
+    looksLikePatch(normalizedDiff) || looksLikeNumberedEditDiff(normalizedDiff)
+      ? normalizedDiff
+      : syntheticPatch || normalizedDiff,
   );
   let fallbackLines = $derived(
     fallbackText.split("\n").map(line => ({
@@ -84,8 +93,20 @@
         border-right-color: color-mix(in srgb, var(--tool-output-border) 82%, transparent);
       }
 
+      [data-line-type="change-addition"],
+      [data-line-type="change-addition"] + [data-no-newline],
+      [data-column-number][data-line-type="change-addition"] {
+        background: var(--diffs-bg-addition);
+      }
+
       [data-line-type="change-addition"] {
         color: var(--diff-added-text);
+      }
+
+      [data-line-type="change-deletion"],
+      [data-line-type="change-deletion"] + [data-no-newline],
+      [data-column-number][data-line-type="change-deletion"] {
+        background: var(--diffs-bg-deletion);
       }
 
       [data-line-type="change-deletion"] {
@@ -95,9 +116,14 @@
       [data-separator="line-info"],
       [data-separator="line-info-basic"],
       [data-separator="metadata"],
+      [data-separator="simple"],
       [data-diffs-header="default"] {
         color: var(--text-subtle);
         background: var(--diff-header-bg);
+      }
+
+      [data-separator="simple"] {
+        min-height: 1px;
       }
     `;
   }
@@ -128,7 +154,9 @@
   function diffOptions() {
     return {
       diffStyle: "unified" as const,
+      diffIndicators: "none" as const,
       disableFileHeader: true,
+      hunkSeparators: "simple" as const,
       overflow: "scroll" as const,
       theme: ensureDiffThemesRegistered(),
       themeType: readThemeModeFromDom(),
@@ -171,11 +199,114 @@
     );
   }
 
-  function lineCount(text: string) {
-    if (!text) return 0;
-    const lines = text.replace(/\r/g, "").split("\n");
-    if (lines.at(-1) === "") lines.pop();
-    return lines.length;
+  type NumberedDiffLine = {
+    kind: "context" | "removed" | "added";
+    lineNumber: number;
+    text: string;
+  };
+
+  function parseNumberedEditLine(line: string): NumberedDiffLine | "gap" | undefined {
+    const indicator = line[0];
+    if (indicator !== " " && indicator !== "+" && indicator !== "-") return undefined;
+
+    const content = line.slice(1);
+    if (/^\s*\.\.\.\s*$/.test(content)) return "gap";
+
+    const match = content.match(/^\s*(\d+)\s(.*)$/);
+    if (!match) return undefined;
+
+    return {
+      kind:
+        indicator === "+"
+          ? "added"
+          : indicator === "-"
+            ? "removed"
+            : "context",
+      lineNumber: Number(match[1]),
+      text: match[2] ?? "",
+    };
+  }
+
+  function looksLikeNumberedEditDiff(diffText: string) {
+    if (!diffText || looksLikePatch(diffText)) return false;
+    const lines = diffText.split("\n").filter(line => line.length > 0);
+    if (lines.length === 0) return false;
+
+    let parsed = 0;
+    let changed = 0;
+    for (const line of lines) {
+      const parsedLine = parseNumberedEditLine(line);
+      if (!parsedLine) return false;
+      if (parsedLine === "gap") continue;
+      parsed += 1;
+      if (parsedLine.kind !== "context") changed += 1;
+    }
+
+    return parsed > 0 && changed > 0;
+  }
+
+  function hunkHeaderCount(count: number) {
+    return count === 1 ? "" : `,${count}`;
+  }
+
+  function appendNumberedEditHunk(
+    patchLines: string[],
+    hunkLines: NumberedDiffLine[],
+    lineDelta: number,
+  ) {
+    if (hunkLines.length === 0) return 0;
+
+    const firstLine = hunkLines[0]!;
+    const oldStart =
+      firstLine.kind === "added"
+        ? Math.max(1, firstLine.lineNumber - lineDelta)
+        : firstLine.lineNumber;
+    const newStart =
+      firstLine.kind === "removed"
+        ? Math.max(1, firstLine.lineNumber + lineDelta)
+        : firstLine.lineNumber;
+    let oldCount = 0;
+    let newCount = 0;
+
+    for (const line of hunkLines) {
+      if (line.kind !== "added") oldCount += 1;
+      if (line.kind !== "removed") newCount += 1;
+    }
+
+    patchLines.push(
+      `@@ -${oldStart}${hunkHeaderCount(oldCount)} +${newStart}${hunkHeaderCount(newCount)} @@`,
+    );
+
+    for (const line of hunkLines) {
+      const indicator =
+        line.kind === "added" ? "+" : line.kind === "removed" ? "-" : " ";
+      patchLines.push(`${indicator}${line.text}`);
+    }
+
+    return newCount - oldCount;
+  }
+
+  function numberedEditDiffToPatch(diffText: string) {
+    const patchLines = [`--- a/${safeDisplayPath()}`, `+++ b/${safeDisplayPath()}`];
+    let hunkLines: NumberedDiffLine[] = [];
+    let lineDelta = 0;
+
+    for (const line of diffText.split("\n")) {
+      if (!line) continue;
+
+      const parsedLine = parseNumberedEditLine(line);
+      if (!parsedLine) throw new Error("Unsupported numbered edit diff format");
+      if (parsedLine === "gap") {
+        lineDelta += appendNumberedEditHunk(patchLines, hunkLines, lineDelta);
+        hunkLines = [];
+        continue;
+      }
+
+      hunkLines.push(parsedLine);
+    }
+
+    appendNumberedEditHunk(patchLines, hunkLines, lineDelta);
+    return patchLines.join("\n");
   }
 
   function ensureTrailingNewline(text: string) {
@@ -183,9 +314,13 @@
     return text.endsWith("\n") ? text : `${text}\n`;
   }
 
+  function normalizeLineEndings(text: string) {
+    return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  }
+
   function splitLines(text: string) {
     if (!text) return [];
-    return ensureTrailingNewline(text.replace(/\r/g, "")).split("\n").slice(0, -1);
+    return ensureTrailingNewline(normalizeLineEndings(text)).split("\n").slice(0, -1);
   }
 
   function commonPrefixCount(left: string[], right: string[]) {
@@ -210,10 +345,35 @@
     return count;
   }
 
-  function synthesizePatchFromEdits(editList: DiffEdit[]) {
+  function locateTextLine(
+    content: string | null,
+    text: string,
+    fromIndex: number,
+  ): { lineNumber: number; endIndex: number } | undefined {
+    if (!content || !text) return undefined;
+    const normalizedText = normalizeLineEndings(text);
+    if (!normalizedText) return undefined;
+
+    const index = content.indexOf(normalizedText, fromIndex);
+    if (index === -1) return undefined;
+
+    return {
+      lineNumber: content.slice(0, index).split("\n").length,
+      endIndex: index + normalizedText.length,
+    };
+  }
+
+  function synthesizePatchFromEdits(
+    editList: DiffEdit[],
+    fileContent: string | null,
+  ) {
     if (editList.length === 0) return "";
 
     const lines = [`--- a/${safeDisplayPath()}`, `+++ b/${safeDisplayPath()}`];
+    const normalizedFileContent = fileContent
+      ? normalizeLineEndings(fileContent)
+      : null;
+    let searchIndex = 0;
     let oldLine = 1;
     let newLine = 1;
 
@@ -230,8 +390,11 @@
 
       const hunkOldCount = contextBefore.length + removedLines.length + contextAfter.length;
       const hunkNewCount = contextBefore.length + addedLines.length + contextAfter.length;
-      const hunkOldStart = oldLine;
-      const hunkNewStart = newLine;
+      const located =
+        locateTextLine(normalizedFileContent, edit.newText, searchIndex) ??
+        locateTextLine(normalizedFileContent, edit.oldText, searchIndex);
+      const hunkOldStart = located?.lineNumber ?? oldLine;
+      const hunkNewStart = located?.lineNumber ?? newLine;
 
       lines.push(`@@ -${hunkOldStart},${hunkOldCount} +${hunkNewStart},${hunkNewCount} @@`);
       for (const line of contextBefore) lines.push(` ${line}`);
@@ -239,8 +402,9 @@
       for (const line of addedLines) lines.push(`+${line}`);
       for (const line of contextAfter) lines.push(` ${line}`);
 
-      oldLine += Math.max(oldLines.length, 1);
-      newLine += Math.max(newLines.length, 1);
+      if (located) searchIndex = located.endIndex;
+      oldLine = hunkOldStart + Math.max(hunkOldCount, 1);
+      newLine = hunkNewStart + Math.max(hunkNewCount, 1);
     }
 
     return lines.join("\n");
@@ -248,6 +412,9 @@
 
   function parseDiffText(patchText: string): FileDiffMetadata {
     const candidates: string[] = [];
+    if (looksLikeNumberedEditDiff(patchText)) {
+      candidates.push(numberedEditDiffToPatch(patchText));
+    }
     if (looksLikePatch(patchText)) {
       candidates.push(patchText);
       if (!patchText.startsWith("--- ") && !patchText.startsWith("+++ ")) {
@@ -269,16 +436,23 @@
     throw new Error("Unsupported diff format for @pierre/diffs");
   }
 
-  function applyRenderedHtml() {
-    if (!host) return;
-    const shadowRoot = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-    shadowRoot.innerHTML = renderedHtml;
+  function clearRenderedDiff() {
+    diffRenderer?.cleanUp();
+    diffRenderer = undefined;
+    hasRenderedDiff = false;
   }
 
-  async function renderDiff() {
-    const version = ++renderVersion;
+  function createDiffRenderer() {
+    clearRenderedDiff();
+    diffRenderer = new FileDiffRenderer(diffOptions(), undefined, true);
+    return diffRenderer;
+  }
+
+  function renderDiff() {
+    if (!host) return;
+
     if (!fallbackText) {
-      renderedHtml = "";
+      clearRenderedDiff();
       renderError = "";
       loading = false;
       return;
@@ -288,33 +462,54 @@
 
     try {
       const fileDiff = parseDiffText(normalizedDiff);
-      const result = await preloadFileDiff({
+      const renderer = createDiffRenderer();
+      renderer.render({
         fileDiff,
-        options: diffOptions(),
+        fileContainer: host,
+        forceRender: true,
       });
-      if (version !== renderVersion) return;
-      renderedHtml = result.prerenderedHTML;
+      hasRenderedDiff = true;
       renderError = "";
-      applyRenderedHtml();
     } catch (error) {
-      if (version !== renderVersion) return;
-      renderedHtml = "";
+      clearRenderedDiff();
       renderError =
         error instanceof Error ? error.message : "Failed to render diff";
-      applyRenderedHtml();
     } finally {
-      if (version === renderVersion) loading = false;
+      loading = false;
     }
   }
 
   $effect(() => {
-    void [host, renderedHtml];
-    applyRenderedHtml();
+    void [path, edits, readWorkspaceFile];
+
+    const currentPath = path;
+    if (!currentPath || edits.length === 0 || !readWorkspaceFile) {
+      currentFileContent = null;
+      return;
+    }
+
+    const requestId = ++currentFileRequestId;
+    currentFileContent = null;
+    readWorkspaceFile(currentPath)
+      .then(file => {
+        if (requestId === currentFileRequestId) {
+          currentFileContent = file.content;
+        }
+      })
+      .catch(() => {
+        if (requestId === currentFileRequestId) {
+          currentFileContent = null;
+        }
+      });
+
+    return () => {
+      currentFileRequestId += 1;
+    };
   });
 
   $effect(() => {
-    void [normalizedDiff, path, edits];
-    void renderDiff();
+    void [host, normalizedDiff, path, syntheticPatch];
+    renderDiff();
   });
 
   onMount(() => {
@@ -335,18 +530,18 @@
     }
 
     return () => {
-      renderVersion += 1;
       themeObserver?.disconnect();
+      clearRenderedDiff();
     };
   });
 </script>
 
 <div class="diff-view-shell">
-  <div bind:this={host} class="diff-view-host"></div>
+  <diffs-container bind:this={host} class="diff-view-host"></diffs-container>
 
-  {#if loading && !renderedHtml && !renderError}
+  {#if loading && !hasRenderedDiff && !renderError}
     <div class="diff-view-status">Loading diff...</div>
-  {:else if !renderedHtml && fallbackText}
+  {:else if !hasRenderedDiff && fallbackText}
     <div class="diff-view-fallback" role="note">
       {#if renderError}
         <div class="diff-view-fallback-title">{renderError}</div>

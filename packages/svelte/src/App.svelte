@@ -936,6 +936,7 @@
         onSelectThinkingLevel={handleThinkingLevelSelect}
         onToggleAutoCompaction={handleAutoCompactionToggle}
         onOpenFileReference={handleOpenFileReference}
+        readWorkspaceFile={bridge.readWorkspaceFile}
       />
 
       {#if showRightRailResizer}
