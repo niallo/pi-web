@@ -2,11 +2,6 @@ import { resolve } from "path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@pi-web/bridge": resolve(__dirname, "../bridge/src"),
-    },
-  },
   build: {
     outDir: "../../dist/bin",
     emptyOutDir: true,
@@ -19,6 +14,5 @@ export default defineConfig({
       external: [/^@mariozechner\//, /^@earendil-works\//, /^node:/, "ws"],
     },
     target: "node20",
-    ssr: true,
   },
 });
