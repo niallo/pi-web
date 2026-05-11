@@ -18,32 +18,26 @@ export function createChatTranscriptBlockState() {
     ReturnType<typeof buildToolDetailModel>
   >();
 
-  function toolBlockKey(messageKey: string, blockIdx: number): string {
-    return `${messageKey}-${blockIdx}`;
-  }
-
-  function toggleToolBlock(messageKey: string, blockIdx: number) {
-    const key = toolBlockKey(messageKey, blockIdx);
+  function toggleToolBlock(blockKey: string) {
     const next = new Set(expandedToolBlocks);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    if (next.has(blockKey)) next.delete(blockKey);
+    else next.add(blockKey);
     expandedToolBlocks = next;
   }
 
-  function toggleThinking(messageKey: string, blockIdx: number) {
-    const key = toolBlockKey(messageKey, blockIdx);
+  function toggleThinking(blockKey: string) {
     const next = new Set(expandedThinking);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+    if (next.has(blockKey)) next.delete(blockKey);
+    else next.add(blockKey);
     expandedThinking = next;
   }
 
-  function isToolBlockExpanded(messageKey: string, blockIdx: number): boolean {
-    return expandedToolBlocks.has(toolBlockKey(messageKey, blockIdx));
+  function isToolBlockExpanded(blockKey: string): boolean {
+    return expandedToolBlocks.has(blockKey);
   }
 
-  function isThinkingExpanded(messageKey: string, blockIdx: number): boolean {
-    return expandedThinking.has(toolBlockKey(messageKey, blockIdx));
+  function isThinkingExpanded(blockKey: string): boolean {
+    return expandedThinking.has(blockKey);
   }
 
   function toolBlockModel(block: ToolContentBlock) {

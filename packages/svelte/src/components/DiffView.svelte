@@ -32,13 +32,13 @@
   let renderError = $state("");
   let loading = $state(false);
   let currentFileContent = $state<string | null>(null);
+  let currentFilePath = $state<string | null>(null);
   let diffRenderer: FileDiffRenderer | undefined;
   let themeObserver: MutationObserver | undefined;
   let currentFileRequestId = 0;
   let renderRequestId = 0;
 
   let normalizedDiff = $derived(diff.replace(/\r/g, "").trim());
-  let normalizedEditsKey = $derived(editSignature(edits));
   let syntheticPatch = $derived(
     synthesizePatchFromEdits(edits, currentFileContent),
   );
@@ -330,12 +330,6 @@
     return ensureTrailingNewline(normalizeLineEndings(text)).split("\n").slice(0, -1);
   }
 
-  function editSignature(editList: DiffEdit[]) {
-    return JSON.stringify(
-      editList.map(edit => ({ oldText: edit.oldText, newText: edit.newText })),
-    );
-  }
-
   function commonPrefixCount(left: string[], right: string[]) {
     let count = 0;
     while (count < left.length && count < right.length && left[count] === right[count]) {
@@ -506,24 +500,29 @@
   }
 
   $effect(() => {
-    void [path, normalizedEditsKey, readWorkspaceFile];
+    void [path, readWorkspaceFile];
 
     const currentPath = path;
     if (!currentPath || edits.length === 0 || !readWorkspaceFile) {
       currentFileContent = null;
+      currentFilePath = null;
+      return;
+    }
+    if (currentFilePath === currentPath && currentFileContent !== null) {
       return;
     }
 
     const requestId = ++currentFileRequestId;
+    currentFilePath = currentPath;
     currentFileContent = null;
     readWorkspaceFile(currentPath)
       .then(file => {
-        if (requestId === currentFileRequestId) {
+        if (requestId === currentFileRequestId && currentFilePath === currentPath) {
           currentFileContent = file.content;
         }
       })
       .catch(() => {
-        if (requestId === currentFileRequestId) {
+        if (requestId === currentFileRequestId && currentFilePath === currentPath) {
           currentFileContent = null;
         }
       });

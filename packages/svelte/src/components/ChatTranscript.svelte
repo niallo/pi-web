@@ -90,6 +90,53 @@
     return msg.transcriptKey ?? msg.id ?? `message:${index}`;
   }
 
+  function toolBlockIdentity(block: ToolContentBlock, blockIndex: number): string {
+    if (block.resultSourceMessageId?.trim()) {
+      return `tool-result:${block.resultSourceMessageId}`;
+    }
+    const args = block.argumentsText.trim();
+    if (args) return `tool-call:${block.toolName}:${args}`;
+    return `tool-call:${block.toolName}:${blockIndex}`;
+  }
+
+  function contentBlockKey(
+    msg: TranscriptEntry,
+    messageIndex: number,
+    block: ReturnType<typeof contentBlocks>[number],
+    blockIndex: number,
+  ): string {
+    const messageKey = messageStableKey(msg, messageIndex);
+    switch (block.kind) {
+      case "tool":
+        return `${messageKey}:${toolBlockIdentity(block, blockIndex)}`;
+      case "image":
+        return `${messageKey}:image:${block.src}:${blockIndex}`;
+      case "system":
+        return `${messageKey}:system:${block.systemType}:${block.title}:${blockIndex}`;
+      case "thinking":
+        return `${messageKey}:thinking:${blockIndex}`;
+      case "text":
+        return `${messageKey}:text:${blockIndex}`;
+    }
+  }
+
+  function toolBlockStateKey(
+    msg: TranscriptEntry,
+    messageIndex: number,
+    block: ToolContentBlock,
+    blockIndex: number,
+  ): string {
+    return contentBlockKey(msg, messageIndex, block, blockIndex);
+  }
+
+  function thinkingBlockStateKey(
+    msg: TranscriptEntry,
+    messageIndex: number,
+    blockIndex: number,
+  ): string {
+    return `${messageStableKey(msg, messageIndex)}:thinking:${blockIndex}`;
+  }
+
   function displayItemKey(item: TranscriptDisplayItem, index: number): string {
     return item.kind === "message"
       ? messageStableKey(item.message, item.messageIndex)
@@ -439,8 +486,8 @@
             <button
               type="button"
               class="tool-inline-toggle"
-              onclick={() => blockState.toggleToolBlock(messageStableKey(item.message, item.messageIndex), -1)}
-              aria-expanded={blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -1)}
+              onclick={() => blockState.toggleToolBlock(`${messageStableKey(item.message, item.messageIndex)}:tool-result`)}
+              aria-expanded={blockState.isToolBlockExpanded(`${messageStableKey(item.message, item.messageIndex)}:tool-result`)}
             >
               <span class="tool-inline-summary">
                 <span class="tool-inline-name">{toolResultName(item.message)}</span>
@@ -450,7 +497,7 @@
               {/if}
             </button>
 
-            {#if blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -1)}
+            {#if blockState.isToolBlockExpanded(`${messageStableKey(item.message, item.messageIndex)}:tool-result`)}
               <div class="tool-inline-details">
                 {#if showMessageIds}
                   <span class="message-debug-id">ID {messageIdLabel(item.message)}</span>
@@ -507,8 +554,8 @@
             <button
               type="button"
               class="tool-inline-toggle"
-              onclick={() => blockState.toggleToolBlock(messageStableKey(item.message, item.messageIndex), -2)}
-              aria-expanded={blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -2)}
+              onclick={() => blockState.toggleToolBlock(`${messageStableKey(item.message, item.messageIndex)}:error`)}
+              aria-expanded={blockState.isToolBlockExpanded(`${messageStableKey(item.message, item.messageIndex)}:error`)}
             >
               <span class="tool-inline-summary">
                 <span class="tool-inline-name">{errorSummaryLabel(item.message)}</span>
@@ -518,7 +565,7 @@
               {/if}
             </button>
 
-            {#if blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), -2)}
+            {#if blockState.isToolBlockExpanded(`${messageStableKey(item.message, item.messageIndex)}:error`)}
               <div class="tool-inline-details">
                 {#if showMessageIds}
                   <span class="message-debug-id">ID {messageIdLabel(item.message)}</span>
@@ -550,7 +597,7 @@
               <div class="message-debug-id">ID {messageIdLabel(item.message)}</div>
             {/if}
 
-            {#each contentBlocks(item.message) as block, bIdx}
+            {#each contentBlocks(item.message) as block, bIdx (contentBlockKey(item.message, item.messageIndex, block, bIdx))}
               {#if block.kind === "system"}
                 <article class="system-block" data-system-type={block.systemType}>
                   <div class="system-block-header">
@@ -572,12 +619,12 @@
                 <div class="thinking-block">
                   <button
                     class="thinking-toggle"
-                    onclick={() => blockState.toggleThinking(messageStableKey(item.message, item.messageIndex), bIdx)}
+                    onclick={() => blockState.toggleThinking(thinkingBlockStateKey(item.message, item.messageIndex, bIdx))}
                   >
                     <Sparkle class="toggle-icon" aria-hidden="true" size={14} />
                     Thinking
                   </button>
-                  {#if blockState.isThinkingExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
+                  {#if blockState.isThinkingExpanded(thinkingBlockStateKey(item.message, item.messageIndex, bIdx))}
                     <MarkdownRenderer
                       class="thinking-content"
                       content={block.text}
@@ -593,8 +640,8 @@
                     <button
                       type="button"
                       class="tool-inline-toggle"
-                      onclick={() => blockState.toggleToolBlock(messageStableKey(item.message, item.messageIndex), bIdx)}
-                      aria-expanded={blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
+                      onclick={() => blockState.toggleToolBlock(toolBlockStateKey(item.message, item.messageIndex, block, bIdx))}
+                      aria-expanded={blockState.isToolBlockExpanded(toolBlockStateKey(item.message, item.messageIndex, block, bIdx))}
                     >
                       <span class="tool-inline-summary">
                         <span class="tool-inline-name">{toolBlockDescriptor(block).name}</span>
@@ -613,7 +660,7 @@
                       {/if}
                     </button>
 
-                    {#if blockState.isToolBlockExpanded(messageStableKey(item.message, item.messageIndex), bIdx)}
+                    {#if blockState.isToolBlockExpanded(toolBlockStateKey(item.message, item.messageIndex, block, bIdx))}
                       <div class="tool-inline-details">
                         {#if showMessageIds && block.resultSourceMessageId}
                           <span class="message-debug-id">ID {block.resultSourceMessageId}</span>
@@ -906,7 +953,10 @@
 
   .message-row.system { justify-content: center; }
 
-  .message-row.tool { display: flex; }
+  .message-row.tool {
+    display: flex;
+    overflow-anchor: none;
+  }
 
   .message-stack {
     min-width: 0;
@@ -1029,6 +1079,11 @@
 
   .tool-inline-block + .tool-inline-block {
     margin-top: 6px;
+  }
+
+  .tool-inline-block,
+  .tool-inline-code-panel {
+    overflow-anchor: none;
   }
 
   .thinking-block { padding-left: 0; }
