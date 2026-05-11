@@ -884,7 +884,7 @@
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: 10px;
-    background: color-mix(in srgb, var(--panel-2) 98%, white 2%);
+    background: var(--bg);
     box-shadow:
       0 0 0 1px color-mix(in srgb, var(--border) 50%, transparent),
       var(--shadow-raised);
