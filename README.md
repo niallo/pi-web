@@ -1,5 +1,7 @@
 # pi-web
 
+[![Dataset on HF](https://huggingface.co/datasets/huggingface/badges/resolve/main/dataset-on-hf-sm.svg)](https://huggingface.co/datasets/woxQAQ/pi-web)
+
 A dashboard based on pi agent SDK. Full slop project to apply the comprehension
 about agentic coding by me.
 
