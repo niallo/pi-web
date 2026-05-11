@@ -495,8 +495,7 @@
 
   async function handleDeleteSession(sessionPath: string) {
     try {
-      const response = await bridge.deleteSession(sessionPath);
-      if (response.success) handleRefreshWorkspaces();
+      await bridge.deleteSession(sessionPath);
     } catch {
       // Ignore
     }
