@@ -38,6 +38,7 @@
   let renderRequestId = 0;
 
   let normalizedDiff = $derived(diff.replace(/\r/g, "").trim());
+  let normalizedEditsKey = $derived(editSignature(edits));
   let syntheticPatch = $derived(
     synthesizePatchFromEdits(edits, currentFileContent),
   );
@@ -329,6 +330,12 @@
     return ensureTrailingNewline(normalizeLineEndings(text)).split("\n").slice(0, -1);
   }
 
+  function editSignature(editList: DiffEdit[]) {
+    return JSON.stringify(
+      editList.map(edit => ({ oldText: edit.oldText, newText: edit.newText })),
+    );
+  }
+
   function commonPrefixCount(left: string[], right: string[]) {
     let count = 0;
     while (count < left.length && count < right.length && left[count] === right[count]) {
@@ -373,12 +380,10 @@
     editList: DiffEdit[],
     fileContent: string | null,
   ) {
-    if (editList.length === 0) return "";
+    if (editList.length === 0 || fileContent === null) return "";
 
     const lines = [`--- a/${safeDisplayPath()}`, `+++ b/${safeDisplayPath()}`];
-    const normalizedFileContent = fileContent
-      ? normalizeLineEndings(fileContent)
-      : null;
+    const normalizedFileContent = normalizeLineEndings(fileContent);
     let searchIndex = 0;
     let oldLine = 1;
     let newLine = 1;
@@ -421,6 +426,9 @@
     processFile: DiffsModule["processFile"],
   ): FileDiffMetadata {
     const candidates: string[] = [];
+
+    // Prefer file-anchored edit hunks once we have source content.
+    if (syntheticPatch) candidates.push(syntheticPatch);
     if (looksLikeNumberedEditDiff(patchText)) {
       candidates.push(numberedEditDiffToPatch(patchText));
     }
@@ -431,7 +439,6 @@
       }
     }
 
-    if (syntheticPatch) candidates.push(syntheticPatch);
     if (patchText && !looksLikePatch(patchText)) candidates.push(patchText);
 
     for (const candidate of candidates) {
@@ -499,7 +506,7 @@
   }
 
   $effect(() => {
-    void [path, edits, readWorkspaceFile];
+    void [path, normalizedEditsKey, readWorkspaceFile];
 
     const currentPath = path;
     if (!currentPath || edits.length === 0 || !readWorkspaceFile) {

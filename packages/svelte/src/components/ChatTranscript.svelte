@@ -1138,6 +1138,8 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
+    /* Avoid browser scroll anchoring jumps when streamed tool output re-renders. */
+    overflow-anchor: none;
   }
 
   .tool-inline-toggle {
