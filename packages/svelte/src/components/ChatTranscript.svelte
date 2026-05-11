@@ -581,6 +581,7 @@
                     <MarkdownRenderer
                       class="thinking-content"
                       content={block.text}
+                      streaming={shouldDeferMessageMarkdownErrors(item.message, item.messageIndex)}
                       deferMermaidErrors={shouldDeferMessageMarkdownErrors(item.message, item.messageIndex)}
                       onOpenFileReference={onOpenFileReference}
                     />
@@ -685,6 +686,7 @@
               {:else if block.kind === "text" && block.text}
                 <MarkdownRenderer
                   content={block.text}
+                  streaming={shouldDeferMessageMarkdownErrors(item.message, item.messageIndex)}
                   deferMermaidErrors={shouldDeferMessageMarkdownErrors(item.message, item.messageIndex)}
                   onOpenFileReference={onOpenFileReference}
                 />

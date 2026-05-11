@@ -9,11 +9,13 @@
   let {
     class: className = "",
     content = "",
+    streaming = false,
     deferMermaidErrors = false,
     onOpenFileReference = (_: { path: string; lineNumber: number }) => {},
   }: {
     class?: string;
     content?: string;
+    streaming?: boolean;
     deferMermaidErrors?: boolean;
     onOpenFileReference?: (payload: { path: string; lineNumber: number }) => void;
   } = $props();
@@ -268,6 +270,8 @@
     const version = ++codeRenderVersion;
     await tick();
 
+    if (streaming) return;
+
     const root = markdownBody();
     if (!root) return;
 
@@ -439,13 +443,18 @@
   });
 
   $effect(() => {
-    void [content, deferMermaidErrors];
+    void [content, streaming, deferMermaidErrors];
     schedulePostProcess();
   });
 </script>
 
 <div bind:this={container} role="button" tabindex="0" onclick={handleClick} onkeydown={(e) => (e.key === "Enter" || e.key === " ") && handleClickTarget(e.target)}>
-  <Comark markdown={content} options={COMARK_OPTIONS} class={`markdown-body ${className}`.trim()} />
+  <Comark
+    markdown={content}
+    options={COMARK_OPTIONS}
+    streaming={streaming}
+    class={`markdown-body ${className}`.trim()}
+  />
 </div>
 
 <style>
