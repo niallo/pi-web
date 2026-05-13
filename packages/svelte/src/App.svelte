@@ -370,6 +370,12 @@
   let displayedTranscript = $derived(
     activeDebugSession?.transcript ?? bridge.transcript,
   );
+  let displayedTranscriptDeltas = $derived(
+    activeDebugSession ? [] : bridge.transcriptDeltas,
+  );
+  let displayedTranscriptStreams = $derived(
+    activeDebugSession ? [] : bridge.transcriptStreams,
+  );
   let displayedTranscriptHasOlder = $derived(
     activeDebugSession ? false : bridge.transcriptHasOlder,
   );
@@ -683,7 +689,6 @@
 
   async function handleSessionSelect(sessionPath: string) {
     pendingRevision = null;
-    mainContentRef?.rememberTranscriptScroll();
 
     if (isDebugSessionPath(sessionPath)) {
       activeDebugSessionPath = sessionPath;
@@ -741,7 +746,6 @@
 
   async function handleNewSession(workspacePath: string) {
     pendingRevision = null;
-    mainContentRef?.rememberTranscriptScroll();
 
     if (debugSessionsEnabled && workspacePath === DEBUG_WORKSPACE_PATH) {
       const session = createLocalDebugSession();
@@ -1049,7 +1053,6 @@
 
   $effect(() => {
     if (bridge.connectionStatus === "disconnected") {
-      mainContentRef?.preserveTranscriptScroll();
       pendingRevision = null;
       outlineSidebarOpen = false;
     }
@@ -1236,6 +1239,8 @@
         statusEntries={bridge.statusEntries}
         activeSessionPath={displayedActiveSessionPath}
         transcript={displayedTranscript}
+        transcriptDeltas={displayedTranscriptDeltas}
+        transcriptStreams={displayedTranscriptStreams}
         transcriptHasOlder={displayedTranscriptHasOlder}
         transcriptInitialLoading={displayedTranscriptInitialLoading}
         transcriptPageLoading={displayedTranscriptPageLoading}

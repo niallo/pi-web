@@ -55,6 +55,10 @@ export interface StartBridgeOptions {
    * Disable this when the caller already handles Ctrl+C inside a custom UI.
    */
   captureSigint?: boolean;
+  /**
+   * Reuse a detached-session registry across bridge restarts in dev mode.
+   */
+  sessionRegistry?: DetachedSessionRegistry;
 }
 
 export async function startBridge(
@@ -69,8 +73,11 @@ export async function startBridge(
   // Event handlers for terminal log view
   const eventHandlers: Array<(event: BridgeEvent) => void> = [];
 
-  // Shared session registry for detached sessions
-  const sessionRegistry = new DetachedSessionRegistry(context.state.cwd);
+  // Reuse the detached-session registry when the caller wants sessions to
+  // survive a dev-mode bridge restart.
+  const sessionRegistry =
+    options.sessionRegistry ?? new DetachedSessionRegistry(context.state.cwd);
+  const ownsSessionRegistry = !options.sessionRegistry;
 
   // Emit events to all handlers
   const emitEvent = (event: BridgeEvent): void => {
@@ -117,49 +124,55 @@ export async function startBridge(
   // SIGINT handler
   let sigintHandler: (() => void) | undefined;
 
-  // Track if we're already shutting down
-  let isShuttingDown = false;
+  // Reuse the same shutdown promise so concurrent stop() callers wait for the
+  // in-flight shutdown instead of racing a restart against an open port.
+  let shutdownPromise: Promise<void> | undefined;
 
   /**
    * Graceful shutdown
    */
-  const shutdown = async (): Promise<void> => {
-    if (isShuttingDown) {
-      return;
-    }
-    isShuttingDown = true;
-    state = { status: "stopping" };
-
-    // Emit SIGINT event
-    emitEvent({ type: "sigint_received" });
-
-    // Remove SIGINT handler
-    if (sigintHandler) {
-      process.off("SIGINT", sigintHandler);
+  const shutdown = (): Promise<void> => {
+    if (shutdownPromise) {
+      return shutdownPromise;
     }
 
-    try {
-      // Stop server
-      await server.stop();
+    shutdownPromise = (async () => {
+      state = { status: "stopping" };
 
-      // Dispose event bus
-      eventBus.dispose();
+      // Emit SIGINT event
+      emitEvent({ type: "sigint_received" });
 
-      // Dispose session registry
-      sessionRegistry.dispose();
+      // Remove SIGINT handler
+      if (sigintHandler) {
+        process.off("SIGINT", sigintHandler);
+      }
 
-      state = { status: "stopped" };
+      try {
+        // Stop server
+        await server.stop();
 
-      // Emit shutdown complete
-      emitEvent({ type: "shutdown_complete" });
-    } catch (err) {
-      console.error("Bridge shutdown error:", err);
-      state = { status: "stopped" };
-      throw err;
-    } finally {
-      // Notify that we're done
-      done();
-    }
+        // Dispose event bus
+        eventBus.dispose();
+
+        if (ownsSessionRegistry) {
+          sessionRegistry.dispose();
+        }
+
+        state = { status: "stopped" };
+
+        // Emit shutdown complete
+        emitEvent({ type: "shutdown_complete" });
+      } catch (err) {
+        console.error("Bridge shutdown error:", err);
+        state = { status: "stopped" };
+        throw err;
+      } finally {
+        // Notify that we're done
+        done();
+      }
+    })();
+
+    return shutdownPromise;
   };
 
   // Register SIGINT handler

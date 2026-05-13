@@ -14,15 +14,20 @@
   import CompatWarning from "../components/CompatWarning.svelte";
   import ComposerBar from "../components/ComposerBar.svelte";
   import SessionStatsBar from "../components/SessionStatsBar.svelte";
-  import type { ConnectionStatus, TranscriptEntry } from "../composables/bridgeStore.svelte";
+  import type { ConnectionStatus, TranscriptDelta, TranscriptEntry, TranscriptStream } from "../composables/bridgeStore.svelte";
+  import { isDebugSessionPath } from "../utils/debugSession";
   import type { RpcModelInfo } from "../utils/models";
   import type { PendingTranscriptSessionEvent } from "../utils/transcript";
+
+  let transcriptRef: ChatTranscript | null = $state(null);
 
   let {
     compatWarningVisible = false,
     statusEntries = {} as Record<string, string>,
     activeSessionPath = null as string | null,
     transcript = [] as readonly TranscriptEntry[],
+    transcriptDeltas = [] as readonly TranscriptDelta[],
+    transcriptStreams = [] as readonly TranscriptStream[],
     transcriptHasOlder = false,
     transcriptInitialLoading = false,
     transcriptPageLoading = false,
@@ -91,6 +96,8 @@
     statusEntries?: Record<string, string>;
     activeSessionPath?: string | null;
     transcript?: readonly TranscriptEntry[];
+    transcriptDeltas?: readonly TranscriptDelta[];
+    transcriptStreams?: readonly TranscriptStream[];
     transcriptHasOlder?: boolean;
     transcriptInitialLoading?: boolean;
     transcriptPageLoading?: boolean;
@@ -156,18 +163,10 @@
     readWorkspaceFile?: (path: string) => Promise<RpcWorkspaceFile>;
   } = $props();
 
-  let chatTranscriptRef: ChatTranscript | null = $state(null);
-
-  export function preserveTranscriptScroll() {
-    chatTranscriptRef?.preserveScroll();
-  }
-
-  export function rememberTranscriptScroll() {
-    chatTranscriptRef?.rememberSessionScroll();
-  }
+  let isDebugSession = $derived(isDebugSessionPath(activeSessionPath));
 
   export function scrollToTranscriptEntry(entryId: string): boolean {
-    return chatTranscriptRef?.scrollToMessageId(entryId) ?? false;
+    return transcriptRef?.scrollToTranscriptEntry(entryId) ?? false;
   }
 </script>
 
@@ -175,9 +174,11 @@
   <CompatWarning visible={compatWarningVisible} />
 
   <ChatTranscript
-    bind:this={chatTranscriptRef}
+    bind:this={transcriptRef}
     sessionPath={activeSessionPath}
     messages={transcript}
+    {transcriptDeltas}
+    {transcriptStreams}
     hasOlder={transcriptHasOlder}
     initialLoading={transcriptInitialLoading}
     pageLoading={transcriptPageLoading}
@@ -236,6 +237,7 @@
     {connectionStatus}
     {isStreaming}
     {isDebugMode}
+    {isDebugSession}
     {commands}
     {workspaceEntries}
     {workspaceEntriesLoading}
@@ -249,6 +251,7 @@
     revision={pendingRevision}
     {pendingMessageCount}
     {editQueuedPayload}
+    onInteraction={() => transcriptRef?.preserveBottomPosition()}
     {onSubmit}
     onAbort={onAbort}
     onCancelRevision={onCancelRevision}
@@ -259,7 +262,7 @@
     {gitRepoState}
     {gitRepoLoading}
     {gitBranchSwitching}
-    gitActionsDisabled={isDebugMode || connectionStatus !== "connected" || isStreaming || isCompacting}
+    gitActionsDisabled={isDebugSession || connectionStatus !== "connected" || isStreaming || isCompacting}
     {refreshGitRepoState}
     {switchGitBranch}
     {createGitBranch}

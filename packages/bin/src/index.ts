@@ -14,10 +14,13 @@ import {
   type ExtensionAPI,
   type ExtensionCommandContext,
 } from "@earendil-works/pi-coding-agent";
-import { DEFAULT_BRIDGE_CONFIG, type BridgeConfig } from "@pi-web/bridge/types";
+import { DetachedSessionRegistry } from "@pi-web/bridge/session-registry";
+import type { BridgeConfig } from "@pi-web/bridge/types";
 import type { WsRpcAdapterContext } from "@pi-web/bridge/ws-rpc-adapter";
+import { loadBridgeRuntime, type BridgeRuntime } from "./bridge-runtime.js";
+import { createBridgeDevReloadController } from "./dev-bridge-reload.js";
 import { isBridgeExitInput } from "./exit-input.js";
-import { startBridge, type BridgeController } from "./lifecycle.js";
+import type { BridgeController } from "./lifecycle.js";
 import {
   createBridgeSessionActions,
   createBridgeSessionEvents,
@@ -82,12 +85,29 @@ async function writeReadyFile(
   );
 }
 
+function buildBridgeConfig(
+  runtime: BridgeRuntime,
+  staticDir: string | undefined,
+): BridgeConfig {
+  return {
+    ...runtime.DEFAULT_BRIDGE_CONFIG,
+    port: process.env.PI_BRIDGE_PORT
+      ? parseInt(process.env.PI_BRIDGE_PORT, 10)
+      : runtime.DEFAULT_BRIDGE_CONFIG.port,
+    host: process.env.PI_BRIDGE_HOST || runtime.DEFAULT_BRIDGE_CONFIG.host,
+    staticDir,
+  };
+}
+
 async function runHeadlessWebBridge(
   config: BridgeConfig,
+  startBridge: BridgeRuntime["startBridge"],
   adapterContext: WsRpcAdapterContext,
   options: WebCommandOptions,
   ctx: ExtensionCommandContext,
-): Promise<void> {
+  extensionEntryFile: string,
+  sessionRegistry: DetachedSessionRegistry,
+): Promise<boolean> {
   let resolveStopped: (() => void) | undefined;
   const stopped = new Promise<void>(resolve => {
     resolveStopped = resolve;
@@ -99,6 +119,7 @@ async function runHeadlessWebBridge(
     () => resolveStopped?.(),
     {
       captureSigint: false,
+      sessionRegistry,
     },
   );
 
@@ -116,20 +137,25 @@ async function runHeadlessWebBridge(
     await writeReadyFile(options.readyFile, { bridgeUrl, wsUrl });
   }
 
-  const requestStop = (): void => {
-    void bridgeController.stop().catch(err => {
+  const requestStop = async (): Promise<void> => {
+    await bridgeController.stop().catch(err => {
       console.error("[pi-web] Failed to stop bridge:", err);
     });
   };
 
+  const devReload = createBridgeDevReloadController({
+    extensionEntryFile,
+    stop: requestStop,
+  });
+
   const onSigint = (): void => {
-    requestStop();
+    void requestStop();
   };
   const onSigterm = (): void => {
-    requestStop();
+    void requestStop();
   };
   const onAbort = (): void => {
-    requestStop();
+    void requestStop();
   };
 
   process.on("SIGINT", onSigint);
@@ -139,7 +165,7 @@ async function runHeadlessWebBridge(
   const shutdownPoll = options.shutdownFile
     ? setInterval(() => {
         if (existsSync(options.shutdownFile!)) {
-          requestStop();
+          void requestStop();
         }
       }, SHUTDOWN_POLL_MS)
     : undefined;
@@ -154,45 +180,28 @@ async function runHeadlessWebBridge(
     if (shutdownPoll) {
       clearInterval(shutdownPoll);
     }
+    devReload?.dispose();
   }
+
+  return devReload?.reloadRequested() ?? false;
 }
 
-async function webBridgeHandler(
-  args: string,
+async function runInteractiveWebBridge(
+  config: BridgeConfig,
+  startBridge: BridgeRuntime["startBridge"],
+  adapterContext: WsRpcAdapterContext,
   ctx: ExtensionCommandContext,
-  pi: ExtensionAPI,
-): Promise<void> {
-  const adapterContext: WsRpcAdapterContext = {
-    events: createBridgeSessionEvents(pi),
-    state: createBridgeSessionState(ctx, pi),
-    actions: createBridgeSessionActions(pi, ctx),
-  };
-
-  const thisFile = fileURLToPath(import.meta.url);
-  const projectRoot = join(dirname(thisFile), "..", "..");
-  const webDistDir = join(projectRoot, "web-dist");
-  const staticDir = existsSync(webDistDir) ? webDistDir : undefined;
-  const options = parseWebCommandOptions(args, process.env, ctx.hasUI);
-
-  const config: BridgeConfig = {
-    ...DEFAULT_BRIDGE_CONFIG,
-    port: process.env.PI_BRIDGE_PORT
-      ? parseInt(process.env.PI_BRIDGE_PORT, 10)
-      : DEFAULT_BRIDGE_CONFIG.port,
-    host: process.env.PI_BRIDGE_HOST || DEFAULT_BRIDGE_CONFIG.host,
-    staticDir,
-  };
-
-  if (options.headless) {
-    await runHeadlessWebBridge(config, adapterContext, options, ctx);
-    return;
-  }
-
+  extensionEntryFile: string,
+  sessionRegistry: DetachedSessionRegistry,
+): Promise<boolean> {
   let bridgeController: BridgeController | undefined;
   let terminalView:
     | (ReturnType<typeof createBridgeTerminalView> & { dispose: () => void })
     | undefined;
   let finishWebMode: (() => void) | undefined;
+  let devReload = undefined as
+    | ReturnType<typeof createBridgeDevReloadController>
+    | undefined;
 
   try {
     bridgeController = await startBridge(
@@ -207,6 +216,7 @@ async function webBridgeHandler(
         // detection. Avoid registering another process-level SIGINT handler here,
         // which can leave Pi in a bad state after exiting /web.
         captureSigint: false,
+        sessionRegistry,
       },
     );
   } catch (err) {
@@ -222,7 +232,7 @@ async function webBridgeHandler(
         invalidate() {},
       };
     });
-    return;
+    return false;
   }
 
   const stdinExitHandler = (data: Buffer | string): void => {
@@ -245,6 +255,14 @@ async function webBridgeHandler(
         terminalView?.requestExit();
         done();
       };
+
+      devReload ??= createBridgeDevReloadController({
+        extensionEntryFile,
+        stop: async () => {
+          finishWebMode?.();
+          await bridgeController?.stop();
+        },
+      });
 
       const view = createBridgeTerminalView(
         handler => bridgeController!.subscribe(handler),
@@ -294,10 +312,67 @@ async function webBridgeHandler(
   } finally {
     finishWebMode = undefined;
     process.stdin.off("data", stdinExitHandler);
+    devReload?.dispose();
     terminalView?.dispose();
     if (bridgeController && bridgeController.getState().status !== "stopped") {
       await bridgeController.stop();
     }
+  }
+
+  return devReload?.reloadRequested() ?? false;
+}
+
+async function webBridgeHandler(
+  args: string,
+  ctx: ExtensionCommandContext,
+  pi: ExtensionAPI,
+): Promise<void> {
+  const adapterContext: WsRpcAdapterContext = {
+    events: createBridgeSessionEvents(pi),
+    state: createBridgeSessionState(ctx, pi),
+    actions: createBridgeSessionActions(pi, ctx),
+  };
+
+  const thisFile = fileURLToPath(import.meta.url);
+  const projectRoot = join(dirname(thisFile), "..", "..");
+  const webDistDir = join(projectRoot, "web-dist");
+  const staticDir = existsSync(webDistDir) ? webDistDir : undefined;
+  const options = parseWebCommandOptions(args, process.env, ctx.hasUI);
+
+  const sessionRegistry = new DetachedSessionRegistry(adapterContext.state.cwd);
+
+  try {
+    while (true) {
+      const bridgeRuntime = await loadBridgeRuntime(thisFile);
+      const config = buildBridgeConfig(bridgeRuntime, staticDir);
+
+      const reloadRequested = options.headless
+        ? await runHeadlessWebBridge(
+            config,
+            bridgeRuntime.startBridge,
+            adapterContext,
+            options,
+            ctx,
+            thisFile,
+            sessionRegistry,
+          )
+        : await runInteractiveWebBridge(
+            config,
+            bridgeRuntime.startBridge,
+            adapterContext,
+            ctx,
+            thisFile,
+            sessionRegistry,
+          );
+
+      if (!reloadRequested) {
+        return;
+      }
+
+      console.log("[pi-web] Bridge runtime reloaded.");
+    }
+  } finally {
+    sessionRegistry.dispose();
   }
 }
 

@@ -1,9 +1,17 @@
 <script lang="ts">
-  import type { RpcImageContent } from "@pi-web/bridge/types";
+  import { tick } from "svelte";
+  import type {
+    RpcImageContent,
+    RpcTranscriptContent,
+    RpcTranscriptContentBlock,
+  } from "@pi-web/bridge/types";
   import Pencil from "lucide-svelte/icons/pencil";
   import Sparkle from "lucide-svelte/icons/sparkle";
-  import { onMount } from "svelte";
-  import type { TranscriptEntry } from "../composables/bridgeStore.svelte";
+  import type {
+    TranscriptDelta,
+    TranscriptEntry,
+    TranscriptStream,
+  } from "../composables/bridgeStore.svelte";
   import { userMessageCopyText } from "../utils/messageCopy";
   import {
     buildTranscriptDisplayItems,
@@ -23,7 +31,6 @@
     createChatTranscriptBlockState,
     createChatTranscriptLightboxState,
   } from "./chatTranscriptBlockState.svelte";
-  import { createChatTranscriptScrollState } from "./chatTranscriptScrollState.svelte";
   import DiffView from "./DiffView.svelte";
   import HighlightedCode from "./HighlightedCode.svelte";
   import ImageLightbox from "./ImageLightbox.svelte";
@@ -32,6 +39,8 @@
   let {
     sessionPath = null as string | null,
     messages = [] as readonly TranscriptEntry[],
+    transcriptDeltas = [] as readonly TranscriptDelta[],
+    transcriptStreams = [] as readonly TranscriptStream[],
     hasOlder = false,
     initialLoading = false,
     pageLoading = false,
@@ -47,6 +56,8 @@
   }: {
     sessionPath?: string | null;
     messages?: readonly TranscriptEntry[];
+    transcriptDeltas?: readonly TranscriptDelta[];
+    transcriptStreams?: readonly TranscriptStream[];
     hasOlder?: boolean;
     initialLoading?: boolean;
     pageLoading?: boolean;
@@ -64,25 +75,44 @@
   // ---- DOM refs ----
   let container = $state<HTMLDivElement | null>(null);
 
+  const BOTTOM_LOCK_THRESHOLD = 24;
+  let shouldStickToBottom = true;
+  let stickToBottomFrame = 0;
+  let lastSessionPath: string | null | undefined = undefined;
+
   // ---- state modules ----
   const blockState = createChatTranscriptBlockState();
   const lightbox = createChatTranscriptLightboxState();
-  const scroll = createChatTranscriptScrollState();
 
   // ---- derived ----
+  let streamDisplayMessages = $derived.by(() => {
+    const messageKeys = new Set(
+      messages.map((message, index) => messageStableKey(message, index)),
+    );
+
+    return transcriptStreams
+      .filter(stream => !messageKeys.has(messageStableKey(stream.message, -1)))
+      .map(stream => messageWithTranscriptDeltas(stream.message, -1));
+  });
   let displayItems = $derived(
-    buildTranscriptDisplayItems(messages, { pendingSessionEvent: pendingTranscriptConfigEvent }),
+    buildTranscriptDisplayItems(
+      [...messages, ...streamDisplayMessages],
+      { pendingSessionEvent: pendingTranscriptConfigEvent },
+    ),
   );
-  let showBusyIndicator = $derived(isStreaming || isCompacting);
+  let hasVisibleStreaming = $derived(
+    isStreaming || transcriptStreams.length > 0 || transcriptDeltas.length > 0,
+  );
+  let showBusyIndicator = $derived(hasVisibleStreaming || isCompacting);
   let streamingAssistantMessageIndex = $derived.by(() => {
-    if (!isStreaming) return -1;
+    if (!hasVisibleStreaming) return -1;
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i]?.role === "assistant") return i;
     }
     return -1;
   });
   let busyIndicatorLabel = $derived(
-    isCompacting && !isStreaming ? "Compacting context" : "Responding",
+    isCompacting && !hasVisibleStreaming ? "Compacting context" : "Responding",
   );
 
   // ---- display helpers ----
@@ -90,12 +120,132 @@
     return msg.transcriptKey ?? msg.id ?? `message:${index}`;
   }
 
-  function toolBlockIdentity(block: ToolContentBlock, blockIndex: number): string {
-    if (block.resultSourceMessageId?.trim()) {
-      return `tool-result:${block.resultSourceMessageId}`;
+  function deltasForMessage(msg: TranscriptEntry, index: number): readonly TranscriptDelta[] {
+    const key = index >= 0 ? messageStableKey(msg, index) : msg.transcriptKey ?? msg.id ?? "";
+    return transcriptDeltas.filter(delta => {
+      if (delta.transcriptKey === key) return true;
+      return Boolean(msg.id && delta.messageId === msg.id);
+    });
+  }
+
+  function streamMatchesMessage(msg: TranscriptEntry, index: number): boolean {
+    const key = index >= 0 ? messageStableKey(msg, index) : msg.transcriptKey ?? msg.id ?? "";
+    return transcriptStreams.some(stream => {
+      if (stream.message.transcriptKey === key) return true;
+      return Boolean(msg.id && stream.message.id === msg.id);
+    });
+  }
+
+  function cloneTranscriptContent(
+    content: RpcTranscriptContent | undefined,
+  ): RpcTranscriptContent | undefined {
+    if (!Array.isArray(content)) return content;
+    return content.map(item =>
+      item && typeof item === "object" ? { ...item } : item,
+    );
+  }
+
+  function defaultDeltaContentBlock(): RpcTranscriptContentBlock {
+    // Fill index gaps with an invisible text placeholder so out-of-order
+    // streamed blocks do not render phantom tool calls or thinking rows.
+    return { type: "text", text: "" };
+  }
+
+  function appendDeltaToContentBlock(
+    block: string | RpcTranscriptContentBlock | undefined,
+    delta: TranscriptDelta,
+  ): string | RpcTranscriptContentBlock {
+    if (delta.blockType === "text") {
+      if (typeof block === "string") return block + delta.delta;
+      if (block?.type === "text") {
+        return { ...block, text: `${block.text}${delta.delta}` };
+      }
+      return { type: "text", text: delta.delta };
     }
-    const args = block.argumentsText.trim();
-    if (args) return `tool-call:${block.toolName}:${args}`;
+
+    if (delta.blockType === "thinking") {
+      if (block && typeof block === "object" && block.type === "thinking") {
+        return { ...block, thinking: `${block.thinking}${delta.delta}` };
+      }
+      return { type: "thinking", thinking: delta.delta };
+    }
+
+    if (block && typeof block === "object" && block.type === "toolCall") {
+      const currentArguments =
+        typeof block.arguments === "string"
+          ? block.arguments
+          : block.arguments
+            ? JSON.stringify(block.arguments)
+            : "";
+      return {
+        ...block,
+        id: delta.toolCallId ?? block.id,
+        name: delta.toolName ?? block.name,
+        arguments: `${currentArguments}${delta.delta}`,
+      };
+    }
+
+    return {
+      type: "toolCall",
+      id: delta.toolCallId,
+      name: delta.toolName ?? "tool",
+      arguments: delta.delta,
+    };
+  }
+
+  function messageWithTranscriptDeltas(
+    msg: TranscriptEntry,
+    index: number,
+  ): TranscriptEntry {
+    const deltas = deltasForMessage(msg, index);
+    if (deltas.length === 0) return msg;
+
+    let content = cloneTranscriptContent(msg.content);
+    for (const delta of deltas) {
+      if (
+        delta.blockType === "text" &&
+        delta.contentIndex === 0 &&
+        typeof content === "string"
+      ) {
+        content += delta.delta;
+        continue;
+      }
+
+      const contentItems = Array.isArray(content)
+        ? content.slice()
+        : typeof content === "string"
+          ? [{ type: "text" as const, text: content }]
+          : [];
+
+      while (contentItems.length <= delta.contentIndex) {
+        contentItems.push(defaultDeltaContentBlock());
+      }
+
+      contentItems[delta.contentIndex] = appendDeltaToContentBlock(
+        contentItems[delta.contentIndex],
+        delta,
+      );
+      content = contentItems;
+    }
+
+    return {
+      ...msg,
+      id: msg.id ?? deltas.at(-1)?.messageId,
+      role: deltas.at(-1)?.role ?? msg.role,
+      content,
+    };
+  }
+
+  function displayContentBlocks(msg: TranscriptEntry, index: number) {
+    // Stream display messages already have deltas applied before they enter
+    // `displayItems`, so avoid replaying the same deltas a second time.
+    if (index >= messages.length) return contentBlocks(msg);
+    return contentBlocks(messageWithTranscriptDeltas(msg, index));
+  }
+
+  function toolBlockIdentity(block: ToolContentBlock, blockIndex: number): string {
+    // Keep tool detail state stable even when streamed tool calls later gain ids
+    // or finish filling in arguments during the final transcript upsert.
     return `tool-call:${block.toolName}:${blockIndex}`;
   }
 
@@ -158,7 +308,12 @@
   }
 
   function shouldDeferMessageMarkdownErrors(msg: TranscriptEntry, mi: number): boolean {
-    return msg.role === "assistant" && mi === streamingAssistantMessageIndex;
+    return (
+      msg.role === "assistant" &&
+      (mi === streamingAssistantMessageIndex ||
+        streamMatchesMessage(msg, mi) ||
+        deltasForMessage(msg, mi).length > 0)
+    );
   }
 
   function previewText(text: string, maxLines: number = 8): string {
@@ -190,6 +345,16 @@
 
   function toolBlockDiffStats(block: ToolContentBlock) {
     return blockState.toolBlockModel(block).diffStats;
+  }
+
+  function toolBlockTrailingKind(block: ToolContentBlock): "diff" | "meta" | "empty" {
+    if (toolBlockDiffStats(block)) return "diff";
+    if (toolBlockDescriptor(block).meta) return "meta";
+    return "empty";
+  }
+
+  function toolBlockTrailingHidden(kind: "diff" | "meta" | "empty", target: "diff" | "meta") {
+    return kind === "empty" || kind !== target;
   }
 
   function toolStatusMeta(status: ToolContentBlock["toolStatus"] | "success" | "error"): string | undefined {
@@ -301,26 +466,137 @@
     });
   }
 
-  // ---- scroll glue ----
-  function handleScroll() {
-    scroll.handleScroll(container, {
-      hasOlder, initialLoading, pageLoading, onLoadOlder,
-    });
-  }
-
   function requestOlderTranscript() {
-    scroll.requestOlderTranscript(container, {
-      hasOlder, initialLoading, pageLoading, onLoadOlder,
+    if (!hasOlder || initialLoading || pageLoading) return;
+    onLoadOlder();
+  }
+
+  function distanceFromBottom(el: HTMLElement): number {
+    return el.scrollHeight - el.clientHeight - el.scrollTop;
+  }
+
+  function isNearBottom(el: HTMLElement): boolean {
+    return distanceFromBottom(el) <= BOTTOM_LOCK_THRESHOLD;
+  }
+
+  function updateBottomLock() {
+    if (!container) return;
+    shouldStickToBottom = isNearBottom(container);
+  }
+
+  function scrollTranscriptToBottom() {
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+    updateBottomLock();
+  }
+
+  function scheduleStickToBottom() {
+    if (stickToBottomFrame) cancelAnimationFrame(stickToBottomFrame);
+    stickToBottomFrame = requestAnimationFrame(() => {
+      stickToBottomFrame = 0;
+      scrollTranscriptToBottom();
     });
   }
 
-  function rememberSessionScroll(sp: string | null = sessionPath) {
-    scroll.rememberSessionScroll(container, sp);
+  function handleTranscriptScroll() {
+    updateBottomLock();
   }
 
-  function preserveScroll() {
-    scroll.preserveScroll(container);
+  export function preserveBottomPosition(gracePx: number = 48): boolean {
+    const el = container;
+    if (!el) return false;
+    if (!shouldStickToBottom && distanceFromBottom(el) > BOTTOM_LOCK_THRESHOLD + gracePx) {
+      updateBottomLock();
+      return false;
+    }
+    shouldStickToBottom = true;
+    tick().then(() => {
+      if (container !== el || !shouldStickToBottom) return;
+      scheduleStickToBottom();
+    });
+    return true;
   }
+
+  function cssEscape(value: string): string {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+      return CSS.escape(value);
+    }
+    return value.replace(/["\\]/g, "\\$&");
+  }
+
+  export function scrollToTranscriptEntry(entryId: string): boolean {
+    const el = container;
+    if (!el) return false;
+
+    const selector = `[data-tree-entry-id="${cssEscape(entryId)}"], [data-tree-entry-ids~="${cssEscape(entryId)}"]`;
+    const target = el.querySelector<HTMLElement>(selector);
+    if (!target) return false;
+
+    target.scrollIntoView({ block: "center" });
+    updateBottomLock();
+    return true;
+  }
+
+  $effect(() => {
+    const el = container;
+    if (!el) return;
+    updateBottomLock();
+  });
+
+  $effect(() => {
+    const el = container;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    let lastHeight = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const keepBottomLocked = shouldStickToBottom;
+      const nextHeight = el.clientHeight;
+      if (nextHeight === lastHeight) return;
+      lastHeight = nextHeight;
+      if (keepBottomLocked) scheduleStickToBottom();
+      else updateBottomLock();
+    });
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+
+  $effect(() => {
+    const el = container;
+    const path = sessionPath;
+    if (!el || lastSessionPath === path) return;
+
+    lastSessionPath = path;
+    shouldStickToBottom = true;
+    tick().then(() => {
+      if (container !== el || sessionPath !== path) return;
+      scheduleStickToBottom();
+      updateBottomLock();
+    });
+  });
+
+  $effect(() => {
+    const el = container;
+    void messages;
+    void transcriptDeltas;
+    void transcriptStreams;
+    void pendingTranscriptConfigEvent;
+    void showBusyIndicator;
+    if (!el || !shouldStickToBottom) return;
+
+    tick().then(() => {
+      if (container !== el || !shouldStickToBottom) return;
+      scheduleStickToBottom();
+    });
+  });
+
+  $effect(() => {
+    return () => {
+      if (!stickToBottomFrame) return;
+      cancelAnimationFrame(stickToBottomFrame);
+      stickToBottomFrame = 0;
+    };
+  });
 
   // ---- copy handling ----
   const userCopySelector = "[data-user-message-index]";
@@ -370,62 +646,11 @@
     event.preventDefault();
   }
 
-  // ---- exposed API ----
-  export { preserveScroll, rememberSessionScroll };
-
-  function scrollToMessageId(messageId: string): boolean {
-    return scroll.scrollToMessageId(container, messageId);
-  }
-  export { scrollToMessageId };
-
-  // ---- effects ----
-  $effect(() => {
-    void sessionPath;
-    if (sessionPath && previousSessionPath !== null && previousSessionPath !== sessionPath) {
-      rememberSessionScroll(previousSessionPath);
-    }
-    scroll.pendingSessionRestore = sessionPath
-      ? (() => {
-          const snapshot = scroll.sessionScrollSnapshots.get(sessionPath);
-          return snapshot
-            ? { sessionPath, snapshot, waitingForOlder: false }
-            : null;
-        })()
-      : null;
-    scroll.topLoadArmed = true;
-  });
-
-  let previousSessionPath = $state<string | null>(null);
-  $effect(() => { previousSessionPath = sessionPath; });
-
-  $effect(() => {
-    void [sessionPath, messages, hasOlder, initialLoading, pageLoading, showBusyIndicator];
-    void scroll.syncViewportAfterRender(container, {
-      sessionPath, hasOlder, initialLoading, pageLoading, onLoadOlder,
-    });
-  });
-
-  $effect(() => {
-    void [sessionPath, displayItems, hasOlder, initialLoading, pageLoading, showBusyIndicator];
-    return () => {
-      scroll.prepareForRender(container);
-    };
-  });
-
-  $effect(() => {
-    if (!hasOlder || initialLoading || pageLoading) return;
-    if (!container) return;
-    if (container.scrollTop > 120) scroll.topLoadArmed = true;
-  });
-
-  onMount(() => {
-    scroll.shouldStickToBottom = scroll.captureScrollSnapshot(container)?.stickToBottom ?? true;
-  });
 </script>
 
 <svelte:document oncopy={handleCopy} />
 
-<div bind:this={container} class="chat-transcript" onscroll={handleScroll}>
+<div bind:this={container} class="chat-transcript" onscroll={handleTranscriptScroll}>
   {#if initialLoading}
     <div class="empty-state loading-state">
       <p class="empty-title">Loading conversation</p>
@@ -604,7 +829,7 @@
               <div class="message-debug-id">ID {messageIdLabel(item.message)}</div>
             {/if}
 
-            {#each contentBlocks(item.message) as block, bIdx (contentBlockKey(item.message, item.messageIndex, block, bIdx))}
+            {#each displayContentBlocks(item.message, item.messageIndex) as block, bIdx (contentBlockKey(item.message, item.messageIndex, block, bIdx))}
               {#if block.kind === "system"}
                 <article class="system-block" data-system-type={block.systemType}>
                   <div class="system-block-header">
@@ -642,8 +867,11 @@
                   {/if}
                 </div>
               {:else if block.kind === "tool"}
+                {@const descriptor = toolBlockDescriptor(block)}
+                {@const diffStats = toolBlockDiffStats(block)}
+                {@const trailingKind = toolBlockTrailingKind(block)}
                 <div class="tool-inline-block" data-tree-entry-id={block.resultSourceMessageId}>
-                  <div class="tool-inline" data-status={toolBlockDescriptor(block).status}>
+                  <div class="tool-inline" data-status={descriptor.status}>
                     <button
                       type="button"
                       class="tool-inline-toggle"
@@ -651,20 +879,27 @@
                       aria-expanded={blockState.isToolBlockExpanded(toolBlockStateKey(item.message, item.messageIndex, block, bIdx))}
                     >
                       <span class="tool-inline-summary">
-                        <span class="tool-inline-name">{toolBlockDescriptor(block).name}</span>
-                        {#if toolBlockDescriptor(block).params}
-                          <span class="tool-inline-params">{toolBlockDescriptor(block).params}</span>
+                        <span class="tool-inline-name">{descriptor.name}</span>
+                        {#if descriptor.params}
+                          <span class="tool-inline-params">{descriptor.params}</span>
                         {/if}
                       </span>
-                      {#if toolBlockDiffStats(block)}
-                        <span class="tool-inline-diff"
-                          aria-label={`${toolBlockDiffStats(block)?.added ?? 0} additions, ${toolBlockDiffStats(block)?.removed ?? 0} deletions`}>
-                          <span class="tool-inline-diff-added">+{toolBlockDiffStats(block)?.added}</span>
-                          <span class="tool-inline-diff-removed">-{toolBlockDiffStats(block)?.removed}</span>
+                      <span class="tool-inline-trailing" hidden={trailingKind === "empty"}>
+                        <span
+                          class="tool-inline-meta"
+                          hidden={toolBlockTrailingHidden(trailingKind, "meta")}
+                          aria-hidden={trailingKind !== "meta"}
+                        >{descriptor.meta ?? ""}</span>
+                        <span
+                          class="tool-inline-diff"
+                          hidden={toolBlockTrailingHidden(trailingKind, "diff")}
+                          aria-hidden={trailingKind !== "diff"}
+                          aria-label={`${diffStats?.added ?? 0} additions, ${diffStats?.removed ?? 0} deletions`}
+                        >
+                          <span class="tool-inline-diff-added">+{diffStats?.added ?? 0}</span>
+                          <span class="tool-inline-diff-removed">-{diffStats?.removed ?? 0}</span>
                         </span>
-                      {:else if toolBlockDescriptor(block).meta}
-                        <span class="tool-inline-meta">{toolBlockDescriptor(block).meta}</span>
-                      {/if}
+                      </span>
                     </button>
 
                     {#if blockState.isToolBlockExpanded(toolBlockStateKey(item.message, item.messageIndex, block, bIdx))}
@@ -767,11 +1002,15 @@
   {/each}
 
   {#if showBusyIndicator}
-    <div class="streaming-indicator">
-      <span class="busy-label">{busyIndicatorLabel}</span>
-      <span class="dot"></span>
-      <span class="dot"></span>
-      <span class="dot"></span>
+    <div class="message-row assistant streaming-indicator-row">
+      <div class="message-content assistant">
+        <div class="streaming-indicator">
+          <span class="busy-label">{busyIndicatorLabel}</span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -1250,10 +1489,14 @@
     color: var(--text-subtle);
   }
 
+  .tool-inline-trailing {
+    flex: none;
+    min-width: 0;
+    max-width: 180px;
+  }
+
   .tool-inline-meta,
   .tool-inline-diff {
-    flex: none;
-    max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1261,7 +1504,10 @@
     line-height: 1.3;
   }
 
-  .tool-inline-meta { color: var(--text-subtle); }
+  .tool-inline-meta {
+    color: var(--text-subtle);
+    display: inline-block;
+  }
 
   .tool-inline-diff {
     display: inline-flex;
@@ -1269,6 +1515,12 @@
     gap: 8px;
     font-family: var(--pi-font-mono);
     font-weight: 600;
+  }
+
+  .tool-inline-trailing[hidden],
+  .tool-inline-meta[hidden],
+  .tool-inline-diff[hidden] {
+    display: none !important;
   }
 
   .tool-inline-diff-added { color: var(--diff-added-accent); }
@@ -1329,11 +1581,14 @@
     color: var(--text-subtle);
   }
 
+  .streaming-indicator-row {
+    overflow-anchor: none;
+  }
+
   .streaming-indicator {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 0 0 0 10px;
     color: var(--text-subtle);
     font-size: 0.72rem;
     line-height: 1.3;
