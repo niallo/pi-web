@@ -58,7 +58,7 @@
     "@earendil-works/pi-coding-agent": "0.74.0",
     "@lobehub/icons-static-svg": "^1.90.0",
     "@pi-web/bridge": "workspace:*",
-    "@types/node": "^25.7.0",
+    "@types/node": "^25.8.0",
     "@typescript/native-preview": "7.0.0-dev.20260413.1",
     "oxfmt": "^0.49.0",
     "oxlint": "^1.64.0",
