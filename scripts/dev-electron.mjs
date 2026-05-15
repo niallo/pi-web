@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
+const isWindows = process.platform === "win32";
+
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const rendererUrl =
   process.env.PI_WEB_ELECTRON_RENDERER_URL || "http://127.0.0.1:5173";
@@ -17,7 +19,32 @@ function spawnCommand(command, args, env = process.env) {
     cwd: rootDir,
     env,
     stdio: "inherit",
+    shell: isWindows,
   });
+}
+
+async function terminateProcessTree(child, signal = "SIGTERM") {
+  if (!child?.pid) {
+    return;
+  }
+
+  if (isWindows) {
+    await new Promise(resolve => {
+      const killer = spawn(
+        "taskkill",
+        ["/pid", String(child.pid), "/t", "/f"],
+        {
+          stdio: "ignore",
+          windowsHide: true,
+        },
+      );
+      killer.on("exit", () => resolve());
+      killer.on("error", () => resolve());
+    });
+    return;
+  }
+
+  child.kill(signal);
 }
 
 async function waitForUrl(url, timeoutMs = 30000) {
@@ -37,19 +64,25 @@ async function waitForUrl(url, timeoutMs = 30000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-function shutdown(code = 0) {
+async function shutdown(code = 0) {
   if (shuttingDown) {
     return;
   }
 
   shuttingDown = true;
-  electronProcess?.kill("SIGTERM");
-  viteProcess?.kill("SIGTERM");
-  setTimeout(() => process.exit(code), 100);
+  await Promise.allSettled([
+    terminateProcessTree(electronProcess),
+    terminateProcessTree(viteProcess),
+  ]);
+  process.exit(code);
 }
 
-process.on("SIGINT", () => shutdown(130));
-process.on("SIGTERM", () => shutdown(143));
+process.on("SIGINT", () => {
+  void shutdown(130);
+});
+process.on("SIGTERM", () => {
+  void shutdown(143);
+});
 
 viteProcess = spawnCommand("pnpm", [
   "-C",
@@ -62,7 +95,7 @@ viteProcess = spawnCommand("pnpm", [
 
 viteProcess.on("exit", code => {
   if (!shuttingDown) {
-    shutdown(code ?? 1);
+    void shutdown(code ?? 1);
   }
 });
 
@@ -76,5 +109,5 @@ electronProcess = spawnCommand("pnpm", ["-C", "packages/electron", "dev"], {
 });
 
 electronProcess.on("exit", code => {
-  shutdown(code ?? 0);
+  void shutdown(code ?? 0);
 });
