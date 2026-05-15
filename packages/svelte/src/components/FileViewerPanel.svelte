@@ -143,6 +143,8 @@
 
 <style>
   .file-viewer-panel {
+    --file-viewer-code-bg: var(--bg);
+
     display: flex;
     flex-direction: column;
     min-width: 0;
@@ -185,6 +187,7 @@
     min-height: 0;
     overflow: auto;
     border-top: 1px solid var(--border);
+    background: var(--file-viewer-code-bg);
     scrollbar-width: none;
   }
 
@@ -194,18 +197,23 @@
 
   .file-viewer-code {
     min-width: max-content;
+    min-height: 100%;
     padding-bottom: 4px;
+    background: var(--file-viewer-code-bg);
   }
 
   .file-viewer-code :global(pre) {
+    min-height: 100%;
     margin: 0;
     padding: 2px 0 6px;
     overflow: visible;
+    background: transparent !important;
   }
 
   .file-viewer-code :global(code) {
     display: block;
     min-width: max-content;
+    min-height: 100%;
     font-family: var(--pi-font-mono);
     font-size: 0.72rem;
     line-height: 1.35;
