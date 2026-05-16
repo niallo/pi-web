@@ -17,6 +17,7 @@ const EXIT_TIMEOUT_MS = 10000;
 const POLL_MS = 200;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(scriptDir, "..");
+const extensionEntry = join(projectRoot, "dist", "bin", "index.js");
 
 function resolvePiCommand() {
   const localCli = join(
@@ -116,7 +117,14 @@ async function main() {
 
     child = spawn(
       piCommand.command,
-      [...piCommand.args, "--no-session", "-p", "/web --headless"],
+      [
+        ...piCommand.args,
+        "--no-session",
+        "--extension",
+        extensionEntry,
+        "-p",
+        "/web --headless",
+      ],
       {
         env: {
           ...process.env,

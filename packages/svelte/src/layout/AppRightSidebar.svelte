@@ -1,8 +1,10 @@
 <script lang="ts">
-  import type { RpcWorkspaceFile } from "@pi-web/bridge/types";
+  import type { RpcGitDiffFile, RpcWorkspaceEntry, RpcWorkspaceFile } from "@pi-web/bridge/types";
   import X from "lucide-svelte/icons/x";
   import FileViewerPanel from "../components/FileViewerPanel.svelte";
+  import GitReviewPanel from "../components/GitReviewPanel.svelte";
   import SessionTreeRail from "../components/SessionTreeRail.svelte";
+  import WorkspaceFilesPanel from "../components/WorkspaceFilesPanel.svelte";
   import type { TreeEntry } from "../composables/bridgeStore.svelte";
 
   type FileTab = {
@@ -16,37 +18,65 @@
     sidebarOpen = false,
     sessionPath = null as string | null,
     hasTreeTab = false,
+    hasReviewTab = false,
+    hasFilesTab = false,
     activeTabId = "",
     activeFileTab = null as FileTab | null,
     fileViewerTabs = [] as readonly FileTab[],
+    gitDiffFiles = [] as readonly RpcGitDiffFile[],
+    gitDiffLoading = false,
+    workspaceEntries = [] as readonly RpcWorkspaceEntry[],
+    workspaceEntriesLoading = false,
     readWorkspaceFile = (_: string) =>
       Promise.resolve({} as RpcWorkspaceFile),
     onCloseSidebar = () => {},
     onSelectTab = (_: string) => {},
     onCloseFileTab = (_: string) => {},
     onSelectTreeEntry = (_: string) => {},
+    onRefreshGitDiff = () => {},
+    onRefreshWorkspaceFiles = () => {},
+    onOpenFileReference = (_: { path: string; lineNumber: number }) => {},
   }: {
     treeEntries?: readonly TreeEntry[];
     sidebarOpen?: boolean;
     sessionPath?: string | null;
     hasTreeTab?: boolean;
+    hasReviewTab?: boolean;
+    hasFilesTab?: boolean;
     activeTabId?: string;
     activeFileTab?: FileTab | null;
     fileViewerTabs?: readonly FileTab[];
+    gitDiffFiles?: readonly RpcGitDiffFile[];
+    gitDiffLoading?: boolean;
+    workspaceEntries?: readonly RpcWorkspaceEntry[];
+    workspaceEntriesLoading?: boolean;
     readWorkspaceFile?: (path: string) => Promise<RpcWorkspaceFile>;
     onCloseSidebar?: () => void;
     onSelectTab?: (tabId: string) => void;
     onCloseFileTab?: (tabId: string) => void;
     onSelectTreeEntry?: (entryId: string) => void;
+    onRefreshGitDiff?: () => void;
+    onRefreshWorkspaceFiles?: () => void;
+    onOpenFileReference?: (payload: { path: string; lineNumber: number }) => void;
   } = $props();
 
   let tabs = $derived([
     ...(hasTreeTab ? [{ id: "tree", path: "Tree", lineNumber: 0 }] : []),
+    ...(hasReviewTab ? [{ id: "review", path: "Review", lineNumber: 0 }] : []),
+    ...(hasFilesTab ? [{ id: "files", path: "Files", lineNumber: 0 }] : []),
     ...fileViewerTabs,
   ]);
 
   function isTreeTab(tabId: string): boolean {
     return tabId === "tree";
+  }
+
+  function isReviewTab(tabId: string): boolean {
+    return tabId === "review";
+  }
+
+  function isFilesTab(tabId: string): boolean {
+    return tabId === "files";
   }
 
   function fileTabLabel(filePath: string): string {
@@ -72,14 +102,18 @@
             aria-controls={`right-rail-panel-${tab.id}`}
             title={isTreeTab(tab.id)
               ? "Session tree"
-              : `${tab.path}:${tab.lineNumber}`}
+              : isReviewTab(tab.id)
+                ? "Review workspace changes"
+                : isFilesTab(tab.id)
+                  ? "Browse workspace files"
+                  : `${tab.path}:${tab.lineNumber}`}
             onclick={() => onSelectTab(tab.id)}
           >
             <span class="rail-tab-label">
-              {isTreeTab(tab.id) ? "Tree" : fileTabLabel(tab.path)}
+              {isTreeTab(tab.id) ? "Tree" : isReviewTab(tab.id) ? "Review" : isFilesTab(tab.id) ? "Files" : fileTabLabel(tab.path)}
             </span>
           </button>
-          {#if !isTreeTab(tab.id)}
+          {#if !isTreeTab(tab.id) && !isReviewTab(tab.id) && !isFilesTab(tab.id)}
             <button
               type="button"
               class="rail-tab-close"
@@ -107,6 +141,34 @@
             entries={treeEntries}
             {sessionPath}
             onSelect={(e: string) => onSelectTreeEntry(e)}
+          />
+        </div>
+      {:else if activeTabId === "review" && hasReviewTab}
+        <div
+          id="right-rail-panel-review"
+          class="tab-panel"
+          role="tabpanel"
+          aria-labelledby="right-rail-tab-review"
+        >
+          <GitReviewPanel
+            files={gitDiffFiles}
+            loading={gitDiffLoading}
+            onRefresh={onRefreshGitDiff}
+            onViewFile={onOpenFileReference}
+          />
+        </div>
+      {:else if activeTabId === "files" && hasFilesTab}
+        <div
+          id="right-rail-panel-files"
+          class="tab-panel"
+          role="tabpanel"
+          aria-labelledby="right-rail-tab-files"
+        >
+          <WorkspaceFilesPanel
+            entries={workspaceEntries}
+            loading={workspaceEntriesLoading}
+            onRefresh={onRefreshWorkspaceFiles}
+            onOpenFile={onOpenFileReference}
           />
         </div>
       {:else if activeFileTab}

@@ -33,6 +33,7 @@ import type {
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   RpcGitBranch,
+  RpcGitDiffFile,
   RpcGitRepoState,
   RpcImageContent,
   RpcModel,
@@ -1267,6 +1268,156 @@ function readSpawnText(value: string | Uint8Array | null | undefined): string {
   return Buffer.from(value).toString("utf8");
 }
 
+function gitStatusKind(statusCode: string): RpcGitDiffFile["status"] {
+  if (statusCode === "??") return "untracked";
+  if (statusCode.includes("R")) return "renamed";
+  if (statusCode.includes("C")) return "copied";
+  if (statusCode.includes("A")) return "added";
+  if (statusCode.includes("D")) return "deleted";
+  if (statusCode.includes("T")) return "typechange";
+  if (statusCode.includes("M")) return "modified";
+  return "unknown";
+}
+
+function parseGitDiffStats(diff: string): Pick<
+  RpcGitDiffFile,
+  "additions" | "deletions" | "binary"
+> {
+  let additions = 0;
+  let deletions = 0;
+  let binary = false;
+
+  for (const line of diff.replace(/\r/g, "").split("\n")) {
+    if (
+      line.startsWith("+++") ||
+      line.startsWith("---") ||
+      line.startsWith("@@")
+    ) {
+      continue;
+    }
+    if (line.startsWith("Binary files ") || line.startsWith("GIT binary patch")) {
+      binary = true;
+    } else if (line.startsWith("+")) {
+      additions += 1;
+    } else if (line.startsWith("-")) {
+      deletions += 1;
+    }
+  }
+
+  return { additions, deletions, binary };
+}
+
+function isLikelyBinaryBuffer(buffer: Buffer): boolean {
+  return buffer.subarray(0, 8192).includes(0);
+}
+
+function quoteGitPath(filePath: string): string {
+  return filePath.replace(/([\\"])/g, "\\$1");
+}
+
+function synthesizeUntrackedDiff(
+  repoRoot: string,
+  filePath: string,
+): { diff: string; binary: boolean } {
+  const absolutePath = path.resolve(repoRoot, filePath);
+  let content: Buffer;
+  try {
+    const stat = fs.statSync(absolutePath);
+    if (!stat.isFile()) return { diff: "", binary: false };
+    content = fs.readFileSync(absolutePath);
+  } catch {
+    return { diff: "", binary: false };
+  }
+
+  if (isLikelyBinaryBuffer(content)) {
+    return {
+      diff: `diff --git a/${quoteGitPath(filePath)} b/${quoteGitPath(filePath)}\nnew file mode 100644\nBinary files /dev/null and b/${quoteGitPath(filePath)} differ`,
+      binary: true,
+    };
+  }
+
+  const text = content.toString("utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = text.length > 0 ? text.split("\n") : [];
+  if (lines.at(-1) === "") lines.pop();
+  const hunkCount = lines.length;
+  const diffLines = [
+    `diff --git a/${quoteGitPath(filePath)} b/${quoteGitPath(filePath)}`,
+    "new file mode 100644",
+    "--- /dev/null",
+    `+++ b/${quoteGitPath(filePath)}`,
+    `@@ -0,0 +1,${hunkCount} @@`,
+    ...lines.map(line => `+${line}`),
+  ];
+  if (text && !text.endsWith("\n")) {
+    diffLines.push("\\ No newline at end of file");
+  }
+  return { diff: diffLines.join("\n"), binary: false };
+}
+
+function readGitDiffFiles(
+  cwd: string | null | undefined,
+): { repoRoot: string; files: RpcGitDiffFile[] } | null {
+  const repoState = readGitRepoState(cwd);
+  if (!repoState) return null;
+
+  const statusResult = runGitCommand(repoState.repoRoot, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+  ]);
+  if (statusResult.error || statusResult.status !== 0) return null;
+
+  const records = readSpawnText(statusResult.stdout).split("\0");
+  const files: RpcGitDiffFile[] = [];
+
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record) continue;
+    const statusCode = record.slice(0, 2);
+    let filePath = record.slice(3);
+    let oldPath: string | undefined;
+    if (statusCode.includes("R") || statusCode.includes("C")) {
+      oldPath = filePath;
+      filePath = records[++index] ?? filePath;
+    }
+
+    const status = gitStatusKind(statusCode);
+    let diff = "";
+    let binary = false;
+    if (status === "untracked") {
+      const synthesized = synthesizeUntrackedDiff(repoState.repoRoot, filePath);
+      diff = synthesized.diff;
+      binary = synthesized.binary;
+    } else {
+      const diffResult = runGitCommand(
+        repoState.repoRoot,
+        ["diff", "--no-ext-diff", "--binary", "--unified=3", "HEAD", "--", filePath],
+        5000,
+      );
+      if (!diffResult.error && diffResult.status === 0) {
+        diff = readSpawnText(diffResult.stdout).trimEnd();
+      }
+    }
+
+    const stats = parseGitDiffStats(diff);
+    files.push({
+      path: filePath,
+      ...(oldPath ? { oldPath } : {}),
+      status,
+      additions: stats.additions,
+      deletions: stats.deletions,
+      binary: binary || stats.binary,
+      diff,
+    });
+  }
+
+  return {
+    repoRoot: repoState.repoRoot,
+    files: files.sort((left, right) => left.path.localeCompare(right.path)),
+  };
+}
+
 function getCurrentGitBranch(
   cwd: string | null | undefined,
 ): string | undefined {
@@ -1283,9 +1434,23 @@ function readGitRepoState(
     return null;
   }
 
-  const repoRoot = readSpawnText(repoRootResult.stdout).trim();
-  if (!repoRoot) {
+  const gitRepoRoot = readSpawnText(repoRootResult.stdout).trim();
+  if (!gitRepoRoot) {
     return null;
+  }
+
+  let repoRoot = gitRepoRoot;
+  try {
+    const normalizedCwd = normalizeOptionalWorkspaceRoot(cwd);
+    if (
+      normalizedCwd &&
+      fs.realpathSync.native(normalizedCwd) ===
+        fs.realpathSync.native(gitRepoRoot)
+    ) {
+      repoRoot = normalizedCwd;
+    }
+  } catch {
+    // Keep Git's reported root if filesystem canonicalization fails.
   }
 
   const currentBranchResult = runGitCommand(repoRoot, [
@@ -5725,6 +5890,27 @@ export class WsRpcAdapter {
           command: "list_git_branches" as const,
           success: true as const,
           data: repoState,
+        };
+      }
+
+      case "list_git_diff": {
+        const diffState = readGitDiffFiles(this.sessionRuntime.currentGitCwd());
+        if (!diffState) {
+          return {
+            id: correlationId,
+            type: "response" as const,
+            command: "list_git_diff" as const,
+            success: false as const,
+            error: "No git repository found for the active session",
+          };
+        }
+
+        return {
+          id: correlationId,
+          type: "response" as const,
+          command: "list_git_diff" as const,
+          success: true as const,
+          data: diffState,
         };
       }
 

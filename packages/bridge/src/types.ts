@@ -62,6 +62,24 @@ export interface RpcGitRepoState {
   branches: RpcGitBranch[];
 }
 
+export interface RpcGitDiffFile {
+  path: string;
+  oldPath?: string;
+  status:
+    | "added"
+    | "modified"
+    | "deleted"
+    | "renamed"
+    | "copied"
+    | "untracked"
+    | "typechange"
+    | "unknown";
+  additions: number;
+  deletions: number;
+  binary: boolean;
+  diff: string;
+}
+
 /** Map of RPC command types to their specific payload shapes. */
 export interface RpcModel {
   id: string;
@@ -320,6 +338,7 @@ export interface RpcCommandMap {
 
   /** Git */
   list_git_branches: {};
+  list_git_diff: {};
   switch_git_branch: { branchName: string };
   create_git_branch: { branchName: string };
 
@@ -677,6 +696,7 @@ export interface RpcResponseMap {
   list_workspace_entries: { entries: RpcWorkspaceEntry[] };
   read_workspace_file: RpcWorkspaceFile;
   list_git_branches: RpcGitRepoState;
+  list_git_diff: { repoRoot: string; files: RpcGitDiffFile[] };
   switch_git_branch: RpcGitRepoState;
   create_git_branch: RpcGitRepoState;
   dequeue_follow_up_message: { removed: RpcQueuedMessage };

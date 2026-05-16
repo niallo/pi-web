@@ -46,6 +46,7 @@
     "lint:fix": "oxlint --fix",
     "prepack": "pnpm run build",
     "smoke:pi-web": "node scripts/smoke-pi-web.mjs",
+    "e2e:agent-browser": "node scripts/agent-browser-e2e.mjs",
     "start:bridge:standalone": "node ./dist/bridge/standalone/main.js",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -2,6 +2,7 @@
   import Menu from "lucide-svelte/icons/menu";
   import Moon from "lucide-svelte/icons/moon";
   import Palette from "lucide-svelte/icons/palette";
+  import Pencil from "lucide-svelte/icons/pencil";
   import PanelLeftClose from "lucide-svelte/icons/panel-left-close";
   import PanelLeftOpen from "lucide-svelte/icons/panel-left-open";
   import PanelRightClose from "lucide-svelte/icons/panel-right-close";
@@ -17,6 +18,7 @@
     sidebarCollapsed = false,
     showOutlineToggle = false,
     outlineSidebarOpen = false,
+    renameDisabled = false,
     desktopPlatform = null,
     desktopTitleBarStyle = "system",
     onToggleSidebar = () => {},
@@ -24,6 +26,7 @@
     onToggleOutlineSidebar = () => {},
     onToggleTheme = () => {},
     onOpenThemeSettings = () => {},
+    onRenameSession = async (_: string) => {},
   }: {
     theme: "dark" | "light";
     nextThemeLabel: ThemeMode;
@@ -32,6 +35,7 @@
     sidebarCollapsed?: boolean;
     showOutlineToggle?: boolean;
     outlineSidebarOpen?: boolean;
+    renameDisabled?: boolean;
     desktopPlatform?: PiDesktopPlatform | null;
     desktopTitleBarStyle?: PiDesktopTitleBarStyle;
     onToggleSidebar?: () => void;
@@ -39,7 +43,48 @@
     onToggleOutlineSidebar?: () => void;
     onToggleTheme?: () => void;
     onOpenThemeSettings?: () => void;
+    onRenameSession?: (name: string) => Promise<void> | void;
   } = $props();
+
+  let editingTitle = $state(false);
+  let draftTitle = $state("");
+  let renaming = $state(false);
+
+  function startRename() {
+    if (renameDisabled || renaming) return;
+    draftTitle = sessionTitle;
+    editingTitle = true;
+  }
+
+  function cancelRename() {
+    editingTitle = false;
+    draftTitle = "";
+  }
+
+  async function commitRename() {
+    const next = draftTitle.trim();
+    if (!next || next === sessionTitle) {
+      cancelRename();
+      return;
+    }
+    renaming = true;
+    try {
+      await onRenameSession(next);
+      editingTitle = false;
+    } finally {
+      renaming = false;
+    }
+  }
+
+  function handleRenameKeydown(event: KeyboardEvent) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void commitRename();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename();
+    }
+  }
 </script>
 
 <header
@@ -78,8 +123,30 @@
       {#if workspaceName}
         <p class="workspace-name">{workspaceName}</p>
       {/if}
-      <h1 class="app-title">{sessionTitle}</h1>
+      {#if editingTitle}
+        <input
+          class="title-editor"
+          aria-label="Session name"
+          bind:value={draftTitle}
+          disabled={renaming}
+          autofocus
+          onkeydown={handleRenameKeydown}
+          onblur={() => void commitRename()}
+        />
+      {:else}
+        <h1 class="app-title" ondblclick={startRename}>{sessionTitle}</h1>
+      {/if}
     </div>
+    <button
+      class="rename-session"
+      type="button"
+      aria-label="Rename session"
+      title="Rename session"
+      disabled={renameDisabled || renaming}
+      onclick={startRename}
+    >
+      <Pencil aria-hidden="true" size={14} />
+    </button>
   </div>
   <div class="header-status">
     {#if showOutlineToggle}
@@ -181,7 +248,8 @@
   }
 
   .workspace-name,
-  .app-title {
+  .app-title,
+  .title-editor {
     margin: 0;
     max-width: min(100%, 48vw);
     overflow: hidden;
@@ -205,6 +273,20 @@
     color: var(--text);
   }
 
+  .title-editor {
+    width: min(280px, 42vw);
+    padding: 2px 6px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1;
+    font-weight: 600;
+    outline: none;
+  }
+
   .header-status {
     display: flex;
     align-items: center;
@@ -217,6 +299,7 @@
   }
 
   .sidebar-collapse,
+  .rename-session,
   .outline-toggle,
   .appearance-toggle,
   .theme-toggle {
@@ -240,6 +323,7 @@
   }
 
   .sidebar-collapse:hover,
+  .rename-session:hover:not(:disabled),
   .outline-toggle:hover,
   .appearance-toggle:hover,
   .theme-toggle:hover {
@@ -249,6 +333,7 @@
   }
 
   .sidebar-collapse:focus-visible,
+  .rename-session:focus-visible,
   .outline-toggle:focus-visible,
   .appearance-toggle:focus-visible,
   .theme-toggle:focus-visible {
@@ -256,12 +341,18 @@
     box-shadow: 0 0 0 3px var(--focus-ring);
   }
 
-  .sidebar-collapse {
+  .sidebar-collapse,
+  .rename-session {
     justify-content: center;
     width: 28px;
     height: 28px;
     padding: 0;
     flex: 0 0 28px;
+  }
+
+  .rename-session:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
   }
 
   .outline-toggle,

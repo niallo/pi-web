@@ -58,61 +58,178 @@
 </script>
 
 <aside class="left-rail" class:open={sidebarOpen} class:collapsed>
-  <SessionRail
-    {workspaces}
-    {workspaceSessions}
-    {activeSessionPath}
-    {activeWorkspacePath}
-    {runningSessionPaths}
-    {workspaceSessionLoaded}
-    {workspaceSessionLoading}
-    {workspaceSessionCursors}
-    onSelect={(sp: string) => onSelectSession(sp)}
-    onExpandWorkspace={(wp: string) => onExpandWorkspace(wp)}
-    onDelete={(sp: string) => onDeleteSession(sp)}
-    onNewSession={(wp: string) => onNewSession(wp)}
-    onLoadOlderSessions={(e: { workspacePath: string; cursor?: string | null }) => onLoadOlderSessions(e)}
-  >
-    {#snippet headerActions()}
+  <div class="project-rail" data-pi-web-project-rail aria-label="Projects">
+    <div class="project-list">
+      {#each workspaces.slice(0, 8) as workspace (workspace.id)}
+        <button
+          class="project-chip"
+          class:active={workspace.path === activeWorkspacePath}
+          type="button"
+          aria-label={`Open ${workspace.name}`}
+          title={workspace.path}
+          onclick={() => onNewSession(workspace.path)}
+        >
+          {workspace.name.slice(0, 1).toUpperCase()}
+        </button>
+      {/each}
       <button
-        class="rail-button"
+        class="project-action"
         type="button"
         aria-label="Open workspace"
         title="Open workspace"
         onclick={onRegisterWorkspace}
       >
         <FolderPlus
-          size={RAIL_ACTION_ICON_SIZE}
+          size={18}
           color="var(--text-subtle)"
           style={WORKSPACE_FOLDER_ICON_STYLE}
           aria-hidden="true"
         />
       </button>
+    </div>
+    <div class="project-footer">
       <button
-        class="rail-button"
+        class="project-action"
         type="button"
         aria-label="Refresh workspaces"
         title="Refresh workspaces"
         onclick={onRefreshWorkspaces}
       >
-          <RefreshCw size={RAIL_ACTION_ICON_SIZE} aria-hidden="true" />
+        <RefreshCw size={18} aria-hidden="true" />
       </button>
-    {/snippet}
-  </SessionRail>
+    </div>
+  </div>
+  <div class="session-panel" data-pi-web-session-panel>
+    <SessionRail
+      {workspaces}
+      {workspaceSessions}
+      {activeSessionPath}
+      {activeWorkspacePath}
+      {runningSessionPaths}
+      {workspaceSessionLoaded}
+      {workspaceSessionLoading}
+      {workspaceSessionCursors}
+      onSelect={(sp: string) => onSelectSession(sp)}
+      onExpandWorkspace={(wp: string) => onExpandWorkspace(wp)}
+      onDelete={(sp: string) => onDeleteSession(sp)}
+      onNewSession={(wp: string) => onNewSession(wp)}
+      onLoadOlderSessions={(e: { workspacePath: string; cursor?: string | null }) => onLoadOlderSessions(e)}
+    >
+      {#snippet headerActions()}
+        <button
+          class="rail-button"
+          type="button"
+          aria-label="Open workspace"
+          title="Open workspace"
+          onclick={onRegisterWorkspace}
+        >
+          <FolderPlus
+            size={RAIL_ACTION_ICON_SIZE}
+            color="var(--text-subtle)"
+            style={WORKSPACE_FOLDER_ICON_STYLE}
+            aria-hidden="true"
+          />
+        </button>
+        <button
+          class="rail-button"
+          type="button"
+          aria-label="Refresh workspaces"
+          title="Refresh workspaces"
+          onclick={onRefreshWorkspaces}
+        >
+            <RefreshCw size={RAIL_ACTION_ICON_SIZE} aria-hidden="true" />
+        </button>
+      {/snippet}
+    </SessionRail>
+  </div>
 </aside>
 <div class="rail-backdrop" role="button" tabindex="0" onclick={onCloseSidebar} onkeydown={(e) => (e.key === "Enter" || e.key === " ") && onCloseSidebar()}></div>
 
 <style>
   .left-rail {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     min-width: 0;
     min-height: 0;
     background: var(--rail-bg);
     overflow: hidden;
   }
 
-  .left-rail.collapsed {
+  .project-rail {
+    width: 64px;
+    flex: 0 0 64px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 12px 24px;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .project-list,
+  .project-footer {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .project-list {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .project-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .project-chip,
+  .project-action {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text-subtle);
+    cursor: pointer;
+    flex: 0 0 40px;
+    font: 600 0.78rem/1 var(--pi-font-mono);
+    transition:
+      background 0.15s ease,
+      color 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .project-chip.active {
+    background: var(--panel);
+    color: var(--text);
+  }
+
+  .project-chip:hover,
+  .project-action:hover {
+    background: var(--surface-hover);
+    color: var(--text-muted);
+    transform: translateY(-1px);
+  }
+
+  .session-panel {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+  }
+
+  .left-rail.collapsed .session-panel {
     display: none;
   }
 
@@ -155,7 +272,11 @@
       z-index: 15;
     }
 
-    .left-rail.collapsed {
+    .project-rail {
+      display: none;
+    }
+
+    .left-rail.collapsed .session-panel {
       display: flex;
     }
 

@@ -18,6 +18,7 @@ import type {
   RpcExtensionUIRequest,
   RpcExtensionUIResponse,
   RpcGitBranch,
+  RpcGitDiffFile,
   RpcGitRepoState,
   RpcQueuedMessage,
   RpcQueueUpdateEvent,
@@ -157,6 +158,47 @@ function normalizeGitRepoState(value: unknown): RpcGitRepoState | null {
   };
 }
 
+function normalizeGitDiffFile(value: unknown): RpcGitDiffFile | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Partial<RpcGitDiffFile>;
+  if (typeof data.path !== "string" || typeof data.diff !== "string") {
+    return null;
+  }
+
+  const knownStatuses = new Set<RpcGitDiffFile["status"]>([
+    "added",
+    "modified",
+    "deleted",
+    "renamed",
+    "copied",
+    "untracked",
+    "typechange",
+    "unknown",
+  ]);
+  const status = knownStatuses.has(data.status as RpcGitDiffFile["status"])
+    ? (data.status as RpcGitDiffFile["status"])
+    : "unknown";
+
+  return {
+    path: data.path,
+    oldPath: typeof data.oldPath === "string" ? data.oldPath : undefined,
+    status,
+    additions: readFiniteNumber(data.additions),
+    deletions: readFiniteNumber(data.deletions),
+    binary: data.binary === true,
+    diff: data.diff,
+  };
+}
+
+function normalizeGitDiffFiles(value: unknown): RpcGitDiffFile[] {
+  if (!value || typeof value !== "object") return [];
+  const files = (value as { files?: unknown }).files;
+  if (!Array.isArray(files)) return [];
+  return files
+    .map(file => normalizeGitDiffFile(file))
+    .filter((file): file is RpcGitDiffFile => file !== null);
+}
+
 function normalizeQueuedMessage(value: unknown): RpcQueuedMessage | null {
   if (!value || typeof value !== "object") return null;
   const data = value as Partial<RpcQueuedMessage>;
@@ -234,6 +276,7 @@ let workspaceEntriesRequestContextKey: string | null = null;
 let workspaceEntriesLoadedContextKey: string | null = null;
 let workspaceEntriesLoadedAt = 0;
 let gitRepoStateRequest: Promise<RpcGitRepoState | null> | null = null;
+let gitDiffFilesRequest: Promise<RpcGitDiffFile[]> | null = null;
 let displayTranscriptDeltaTimer: ReturnType<typeof setTimeout> | null = null;
 let displayTranscriptDeltaTimerDueAt = 0;
 let displayTranscriptDeltaLastFlushAt = 0;
@@ -310,6 +353,8 @@ let _remoteCompactionActive = $state(false);
 let _queuedUserMessages = $state<RpcQueuedMessage[]>([]);
 let _sessionStats = $state<RpcSessionStats | null>(null);
 let _gitRepoState = $state<RpcGitRepoState | null>(null);
+let _gitDiffFiles = $state<RpcGitDiffFile[]>([]);
+let _gitDiffLoading = $state(false);
 let _gitRepoLoading = $state(false);
 let _gitBranchSwitching = $state(false);
 let _reconnectCount = $state(0);
@@ -360,6 +405,8 @@ let isCompacting = $derived(
 let queuedUserMessages = $derived(_queuedUserMessages);
 let sessionStats = $derived(_sessionStats);
 let gitRepoState = $derived(_gitRepoState);
+let gitDiffFiles = $derived(_gitDiffFiles);
+let gitDiffLoading = $derived(_gitDiffLoading);
 let gitRepoLoading = $derived(_gitRepoLoading);
 let gitBranchSwitching = $derived(_gitBranchSwitching);
 let reconnectCount = $derived(_reconnectCount);
@@ -617,9 +664,12 @@ function clearQueuedSteeringMessages(options?: {
 
 function resetGitRepoState() {
   _gitRepoState = null;
+  _gitDiffFiles = [];
+  _gitDiffLoading = false;
   _gitRepoLoading = false;
   _gitBranchSwitching = false;
   gitRepoStateRequest = null;
+  gitDiffFilesRequest = null;
 }
 
 function workspaceDisplayName(workspacePath: string): string {
@@ -735,6 +785,20 @@ function removeSessionFromWorkspaceSessions(sessionPath: string) {
   const nextRunning = new Set(_runningSessionPaths);
   nextRunning.delete(sessionPath);
   _runningSessionPaths = [...nextRunning];
+}
+
+function updateSessionNameInWorkspaceSessions(
+  sessionPath: string | null | undefined,
+  name: string,
+) {
+  if (!sessionPath) return;
+  const nextWorkspaceSessions: Record<string, SessionEntry[]> = {};
+  for (const [workspacePath, entries] of Object.entries(_workspaceSessions)) {
+    nextWorkspaceSessions[workspacePath] = entries.map(session =>
+      session.path === sessionPath ? { ...session, name } : session,
+    );
+  }
+  _workspaceSessions = nextWorkspaceSessions;
 }
 
 function setSessionRunning(sessionPath: string | null, isRunning: boolean) {
@@ -1803,6 +1867,7 @@ export async function loadGitRepoState(
       const state = normalizeGitRepoState(resp.data);
       _gitRepoState = state;
       if (!state) pushNotification("Failed to parse git branch data", "error");
+      if (state?.isDirty) void loadGitDiffFiles(true).catch(() => {});
       return state;
     })
     .catch(error => {
@@ -1825,13 +1890,56 @@ export async function loadGitRepoState(
   return gitRepoStateRequest;
 }
 
+export async function loadGitDiffFiles(
+  force: boolean = false,
+): Promise<RpcGitDiffFile[]> {
+  if (!force && gitDiffFilesRequest) return gitDiffFilesRequest;
+  if (!force && _gitDiffFiles.length > 0) return _gitDiffFiles;
+  if (_connectionStatus !== "connected") return _gitDiffFiles;
+
+  _gitDiffLoading = true;
+  gitDiffFilesRequest = sendCommand({ type: "list_git_diff" })
+    .then(resp => {
+      if (!resp.success) {
+        pushNotification(
+          summarizeErrorMessage(
+            resp.error ?? "Failed to load git diff",
+            "Failed to load git diff",
+          ),
+          "error",
+        );
+        return _gitDiffFiles;
+      }
+      _gitDiffFiles = normalizeGitDiffFiles(resp.data);
+      return _gitDiffFiles;
+    })
+    .catch(error => {
+      pushNotification(
+        summarizeErrorMessage(
+          error instanceof Error ? error.message : "Failed to load git diff",
+          "Failed to load git diff",
+        ),
+        "error",
+      );
+      return _gitDiffFiles;
+    })
+    .finally(() => {
+      _gitDiffLoading = false;
+      gitDiffFilesRequest = null;
+    });
+
+  return gitDiffFilesRequest;
+}
+
 function applyGitRepoMutation(state: RpcGitRepoState | null) {
   _gitRepoState = state;
+  _gitDiffFiles = [];
   if (state && _sessionState) {
     _sessionState = { ..._sessionState, gitBranch: state.headLabel };
   }
   invalidateWorkspaceEntries();
   void fetchWorkspaceEntries(true).catch(() => {});
+  if (state?.isDirty) void loadGitDiffFiles(true).catch(() => {});
 }
 
 export async function switchGitBranch(
@@ -1981,6 +2089,26 @@ export function registerWorkspace(
     { type: "register_workspace", workspacePath },
     { timeoutMs: 300_000 },
   );
+}
+
+export async function renameSession(name: string): Promise<RpcResponse> {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return {
+      type: "response",
+      command: "set_session_name",
+      success: false,
+      error: "Session name cannot be empty",
+    } as RpcResponse;
+  }
+  const resp = await sendCommand({ type: "set_session_name", name: trimmed });
+  if (resp.success) {
+    _sessionState = _sessionState
+      ? { ..._sessionState, sessionName: trimmed }
+      : _sessionState;
+    updateSessionNameInWorkspaceSessions(getDisplayedSessionPath(), trimmed);
+  }
+  return resp;
 }
 
 export async function compactSession(customInstructions?: string) {
@@ -2242,6 +2370,10 @@ function handleResponse(payload: RpcResponse) {
           pushNotification("Failed to parse git branch data", "error");
         break;
       }
+      case "list_git_diff": {
+        _gitDiffFiles = normalizeGitDiffFiles(payload.data);
+        break;
+      }
       case "switch_git_branch": {
         applyGitRepoMutation(normalizeGitRepoState(payload.data));
         break;
@@ -2273,6 +2405,10 @@ function handleResponse(payload: RpcResponse) {
           type: "list_tree_entries",
           sessionPath: _activeTreeSessionPath ?? _sessionState?.sessionFile,
         }).catch(() => {});
+        break;
+      }
+      case "set_session_name": {
+        sendCommand({ type: "get_state" }).catch(() => {});
         break;
       }
     }
@@ -2636,6 +2772,12 @@ export function initBridge() {
     get gitRepoState() {
       return gitRepoState;
     },
+    get gitDiffFiles() {
+      return gitDiffFiles;
+    },
+    get gitDiffLoading() {
+      return gitDiffLoading;
+    },
     get gitRepoLoading() {
       return gitRepoLoading;
     },
@@ -2689,6 +2831,7 @@ export function initBridge() {
     loadWorkspaceSessions,
     refreshWorkspaces,
     loadGitRepoState,
+    loadGitDiffFiles,
     switchGitBranch,
     createGitBranch,
     switchSession,
@@ -2698,6 +2841,7 @@ export function initBridge() {
     compactSession,
     setThinkingLevel,
     setAutoCompactionEnabled,
+    renameSession,
     deleteSession,
     cancelQueuedMessage,
     editQueuedMessage,

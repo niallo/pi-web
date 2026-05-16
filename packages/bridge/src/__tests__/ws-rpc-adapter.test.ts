@@ -725,6 +725,71 @@ describe("WsRpcAdapter", () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
+    it("should list git diff files for review", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-web-git-diff-"));
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "hello\n");
+      runGit(tmpDir, ["init"]);
+      runGit(tmpDir, ["config", "user.name", "Pi Web"]);
+      runGit(tmpDir, ["config", "user.email", "pi-web@example.com"]);
+      runGit(tmpDir, ["add", "README.md"]);
+      runGit(tmpDir, ["commit", "-m", "init"]);
+      fs.writeFileSync(path.join(tmpDir, "README.md"), "hello\nworld\n");
+      fs.writeFileSync(path.join(tmpDir, "notes.txt"), "new file\n");
+
+      (
+        context.state.sessionManager.getCwd as ReturnType<typeof vi.fn>
+      ).mockReturnValue(tmpDir);
+      context.state.cwd = tmpDir;
+
+      const command: RpcCommand = {
+        id: "cmd-git-diff",
+        type: "list_git_diff",
+      };
+      (
+        ws as unknown as { trigger: (event: string, data: Buffer) => void }
+      ).trigger(
+        "message",
+        Buffer.from(JSON.stringify({ type: "command", payload: command })),
+      );
+
+      await new Promise(r => setTimeout(r, 10));
+
+      const sendCalls = (ws.send as ReturnType<typeof vi.fn>).mock.calls.map(
+        call => JSON.parse(call[0] as string),
+      );
+      const response = sendCalls.find(
+        call =>
+          call.type === "response" &&
+          call.payload.command === "list_git_diff" &&
+          call.payload.success,
+      );
+
+      expect(response?.payload.data.repoRoot).toBe(tmpDir);
+      expect(response?.payload.data.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: "README.md",
+            status: "modified",
+            additions: 1,
+            deletions: 0,
+          }),
+          expect.objectContaining({
+            path: "notes.txt",
+            status: "untracked",
+            additions: 1,
+            deletions: 0,
+          }),
+        ]),
+      );
+      const notes = response?.payload.data.files.find(
+        (file: { path: string }) => file.path === "notes.txt",
+      );
+      expect(notes?.diff).toContain("+++ b/notes.txt");
+      expect(notes?.diff).toContain("+new file");
+
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
     it("should switch git branches for the active repo", async () => {
       const tmpDir = fs.mkdtempSync(
         path.join(os.tmpdir(), "pi-web-git-switch-"),

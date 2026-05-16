@@ -1,5 +1,6 @@
 <script lang="ts">
   import type {
+    RpcGitDiffFile,
     RpcImageContent,
     RpcThinkingLevel,
     RpcWorkspaceEntry,
@@ -58,6 +59,8 @@
   const bridge = initBridge();
 
   const TREE_TAB_ID = "tree";
+  const REVIEW_TAB_ID = "review";
+  const FILES_TAB_ID = "files";
 
   let sidebarOpen = $state(false);
   let leftSidebarCollapsed = $state(false);
@@ -217,7 +220,7 @@
     };
     if (!compactLayout) {
       const columns = [
-        ...(leftSidebarCollapsed ? [] : [`${leftRailWidth}px`]),
+        leftSidebarCollapsed ? "64px" : `${leftRailWidth}px`,
         "minmax(0, 1fr)",
         ...(shellRightRailOpen ? [`${rightRailWidth}px`] : []),
       ];
@@ -456,8 +459,23 @@
   let displayedIsCompacting = $derived(activeDebugSession ? false : bridge.isCompacting);
   let displayedSessionStats = $derived(activeDebugSession ? null : bridge.sessionStats);
   let displayedTreeEntries = $derived(activeDebugSession ? [] : bridge.treeEntries);
+  let displayedGitDiffFiles = $derived<RpcGitDiffFile[]>(
+    activeDebugSession ? [] : bridge.gitDiffFiles,
+  );
+  let displayedGitDiffLoading = $derived(
+    activeDebugSession ? false : bridge.gitDiffLoading,
+  );
   let displayedHasSessionOutline = $derived(
     activeDebugSession === null && bridge.hasSessionOutline,
+  );
+  let displayedHasGitReview = $derived(
+    activeDebugSession === null &&
+      (displayedGitDiffFiles.length > 0 ||
+        bridge.gitRepoState !== null ||
+        Boolean(displayedSessionState?.gitBranch)),
+  );
+  let displayedHasWorkspaceFiles = $derived(
+    activeDebugSession === null && Boolean(displayedActiveWorkspacePath),
   );
   let displayedWorkspaceEntries = $derived(
     activeDebugSession ? debugWorkspaceEntries : bridge.workspaceEntries,
@@ -488,7 +506,10 @@
     activeDebugSession ? [] : bridge.queuedUserMessages,
   );
   let hasRightSidebarContent = $derived(
-    displayedHasSessionOutline || fileViewerTabs.length > 0,
+    displayedHasSessionOutline ||
+      displayedHasGitReview ||
+      displayedHasWorkspaceFiles ||
+      fileViewerTabs.length > 0,
   );
 
   let activeSessionEntry = $derived(
@@ -545,11 +566,15 @@
 
   function defaultRightSidebarTabId(): RightSidebarTabId | null {
     if (displayedHasSessionOutline) return TREE_TAB_ID;
+    if (displayedHasGitReview) return REVIEW_TAB_ID;
+    if (displayedHasWorkspaceFiles) return FILES_TAB_ID;
     return fileViewerTabs[0]?.id ?? null;
   }
 
   function ensureActiveRightSidebarTab() {
     if (activeRightSidebarTabId === TREE_TAB_ID && displayedHasSessionOutline) return;
+    if (activeRightSidebarTabId === REVIEW_TAB_ID && displayedHasGitReview) return;
+    if (activeRightSidebarTabId === FILES_TAB_ID && displayedHasWorkspaceFiles) return;
 
     const activeFileTab = fileViewerTabs.find(
       t => t.id === activeRightSidebarTabId,
@@ -896,11 +921,30 @@
     if (activeRightSidebarTabId === TREE_TAB_ID) {
       handleRefreshTree();
     }
+    if (activeRightSidebarTabId === REVIEW_TAB_ID) {
+      handleRefreshGitReview();
+    }
+    if (activeRightSidebarTabId === FILES_TAB_ID) {
+      handleRefreshWorkspaceFiles();
+    }
   }
 
   function handleRightSidebarTabSelect(tabId: string) {
     activeRightSidebarTabId = tabId;
     if (tabId === TREE_TAB_ID) handleRefreshTree();
+    if (tabId === REVIEW_TAB_ID) handleRefreshGitReview();
+    if (tabId === FILES_TAB_ID) handleRefreshWorkspaceFiles();
+  }
+
+  function handleRefreshGitReview() {
+    if (activeDebugSessionPath) return;
+    bridge.loadGitRepoState(true).then(() => {
+      bridge.loadGitDiffFiles(true).catch(() => {});
+    }).catch(() => {});
+  }
+
+  function handleRefreshWorkspaceFiles() {
+    ensureDisplayedWorkspaceEntries(true).catch(() => {});
   }
 
   function handleOpenFileReference(payload: {
@@ -1120,6 +1164,22 @@
     );
   }
 
+  async function handleRenameSession(name: string) {
+    if (activeDebugSessionPath) {
+      updateDebugSession(activeDebugSessionPath, session => ({
+        ...session,
+        name,
+        sessionState: { ...session.sessionState, sessionName: name },
+      }));
+      return;
+    }
+
+    const response = await bridge.renameSession(name);
+    if (!response.success) {
+      throw new Error(response.error ?? "Failed to rename session");
+    }
+  }
+
   function handleDesktopMenuAction(action: PiDesktopMenuAction) {
     switch (action) {
       case "open-workspace":
@@ -1212,15 +1272,19 @@
   });
 
   $effect(() => {
-    if (!displayedHasSessionOutline && activeRightSidebarTabId === TREE_TAB_ID) {
-      const fb = fileViewerTabs[0];
-      if (fb) {
-        activeRightSidebarTabId = fb.id;
+    const activeBuiltinMissing =
+      (activeRightSidebarTabId === TREE_TAB_ID && !displayedHasSessionOutline) ||
+      (activeRightSidebarTabId === REVIEW_TAB_ID && !displayedHasGitReview) ||
+      (activeRightSidebarTabId === FILES_TAB_ID && !displayedHasWorkspaceFiles);
+    if (activeBuiltinMissing) {
+      const next = defaultRightSidebarTabId();
+      if (next) {
+        activeRightSidebarTabId = next;
         return;
       }
     }
 
-    if (!displayedHasSessionOutline && fileViewerTabs.length === 0) {
+    if (!displayedHasSessionOutline && !displayedHasGitReview && !displayedHasWorkspaceFiles && fileViewerTabs.length === 0) {
       outlineSidebarOpen = false;
       return;
     }
@@ -1229,7 +1293,7 @@
   });
 
   $effect(() => {
-    if (fileViewerTabs.length === 0 && !displayedHasSessionOutline) {
+    if (fileViewerTabs.length === 0 && !displayedHasSessionOutline && !displayedHasGitReview && !displayedHasWorkspaceFiles) {
       outlineSidebarOpen = false;
     }
     ensureActiveRightSidebarTab();
@@ -1369,11 +1433,13 @@
       outlineSidebarOpen={outlineSidebarOpen}
       desktopPlatform={desktopPlatform}
       desktopTitleBarStyle={desktopTitleBarStyle}
+      renameDisabled={!displayedActiveSessionPath || bridge.connectionStatus !== "connected"}
       onToggleSidebar={toggleSessionSidebar}
       onToggleSidebarCollapse={toggleLeftSidebarCollapse}
       onToggleOutlineSidebar={toggleOutlineSidebar}
       onToggleTheme={toggleTheme}
       onOpenThemeSettings={openThemeSettings}
+      onRenameSession={handleRenameSession}
     />
 
     <ReconnectBanner
@@ -1460,14 +1526,23 @@
       sidebarOpen={outlineSidebarOpen}
       sessionPath={displayedActiveSessionPath}
       hasTreeTab={displayedHasSessionOutline}
+      hasReviewTab={displayedHasGitReview}
+      hasFilesTab={displayedHasWorkspaceFiles}
       activeTabId={activeRightSidebarTabId}
       activeFileTab={activeFileViewerTab}
       {fileViewerTabs}
+      gitDiffFiles={displayedGitDiffFiles}
+      gitDiffLoading={displayedGitDiffLoading}
+      workspaceEntries={displayedWorkspaceEntries}
+      workspaceEntriesLoading={displayedWorkspaceEntriesLoading}
       readWorkspaceFile={readDisplayedWorkspaceFile}
       onCloseSidebar={() => (outlineSidebarOpen = false)}
       onSelectTab={handleRightSidebarTabSelect}
       onCloseFileTab={closeFileViewerTab}
       onSelectTreeEntry={handleTreeEntrySelect}
+      onRefreshGitDiff={handleRefreshGitReview}
+      onRefreshWorkspaceFiles={handleRefreshWorkspaceFiles}
+      onOpenFileReference={handleOpenFileReference}
     />
   {/if}
 
@@ -1539,7 +1614,7 @@
   }
 
   .app-shell.left-rail-collapsed {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 64px minmax(0, 1fr);
   }
 
   .app-shell.left-rail-collapsed .app-main-column {
